@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+*.log
+maps-pipeline/work/
+maps-pipeline/out/

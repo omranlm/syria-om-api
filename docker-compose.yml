@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: syriaom
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-syriaom}
+      POSTGRES_DB: syriaom
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syriaom -d syriaom"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://syriaom:${DB_PASSWORD:-syriaom}@db:5432/syriaom
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Static map server: maps-pipeline/out/maps/<version>/*.mwm + data_version.json
+  maps:
+    image: caddy:2-alpine
+    volumes:
+      - ./maps-pipeline/out:/srv:ro
+      - ./maps-pipeline/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  dbdata: {}
