@@ -13,7 +13,11 @@ from post_generation.hierarchy_to_countries import get_mwm_hash, get_mwm_size
 
 om_path, mwm_dir, version = sys.argv[1], sys.argv[2], int(sys.argv[3])
 
-with open(os.path.join(om_path, "data", "countries.json"), encoding="utf-8") as f:
+# The app repo ships the pruned list, so the full upstream list lives next to this script.
+upstream_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "countries.upstream.json")
+if not os.path.exists(upstream_path):
+    upstream_path = os.path.join(om_path, "data", "countries.json")
+with open(upstream_path, encoding="utf-8") as f:
     upstream = json.load(f)
 
 present = {name[:-4] for name in os.listdir(mwm_dir) if name.endswith(".mwm")}

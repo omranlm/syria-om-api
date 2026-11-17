@@ -36,6 +36,7 @@ RUN cd organicmaps/tools/python/maps_generator && python3 -m venv /om/venv \
 
 COPY build-syria.sh /om/build-syria.sh
 COPY make_countries.py /om/make_countries.py
+COPY countries.upstream.json /om/countries.upstream.json
 RUN chmod +x /om/build-syria.sh
 VOLUME ["/om/work", "/om/out"]
 ENTRYPOINT ["/om/build-syria.sh"]

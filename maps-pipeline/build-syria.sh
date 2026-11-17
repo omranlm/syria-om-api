@@ -6,6 +6,7 @@
 #   PLANET_URL        OSM extract (default: Geofabrik syria-latest.osm.pbf)
 #   WORLD_SOURCE      where World.mwm/WorldCoasts.mwm come from:
 #                       "upstream" (default) downloads them once from the Organic Maps CDN,
+#                       "none" publishes no World files: the app only shows the country maps,
 #                       "build" generates them from the extract (no coastlines: sea is not drawn).
 #   UPSTREAM_CDN      base URL used for WORLD_SOURCE=upstream (default: https://cdn.organicmaps.app)
 #   UPSTREAM_VERSION  data version folder on the CDN to take the World files from (default: 261110)
@@ -75,13 +76,18 @@ VERSION=$(basename "$(ls -d "$BUILD_DIR"/[0-9]*/ | tail -1)")
 MWM_DIR="$BUILD_DIR/$VERSION"
 echo "==> Built version $VERSION in $MWM_DIR"
 
-if [ "$WORLD_SOURCE" != "build" ]; then
+if [ "$WORLD_SOURCE" = "upstream" ]; then
   CACHE="$WORK/world-$UPSTREAM_VERSION"
   mkdir -p "$CACHE"
   for f in World.mwm WorldCoasts.mwm; do
     if [ ! -s "$CACHE/$f" ]; then
       echo "==> Downloading $f from $UPSTREAM_CDN/maps/$UPSTREAM_VERSION/"
-      curl -fL --retry 5 -o "$CACHE/$f.part" "$UPSTREAM_CDN/maps/$UPSTREAM_VERSION/$f" && mv "$CACHE/$f.part" "$CACHE/$f"
+      /om/venv/bin/python - "$UPSTREAM_CDN/maps/$UPSTREAM_VERSION/$f" "$CACHE/$f.part" <<'PY'
+import shutil, sys, urllib.request
+with urllib.request.urlopen(sys.argv[1], timeout=120) as r, open(sys.argv[2], "wb") as out:
+    shutil.copyfileobj(r, out, 1 << 20)
+PY
+      mv "$CACHE/$f.part" "$CACHE/$f"
     fi
     cp "$CACHE/$f" "$MWM_DIR/$f"
   done
@@ -89,13 +95,20 @@ fi
 
 DEST="$OUT/maps/$VERSION"
 rm -rf "$DEST" && mkdir -p "$DEST"
-for f in World.mwm WorldCoasts.mwm; do cp "$MWM_DIR/$f" "$DEST/"; done
+if [ "$WORLD_SOURCE" != "none" ]; then
+  for f in World.mwm WorldCoasts.mwm; do cp "$MWM_DIR/$f" "$DEST/"; done
+fi
 for c in $(echo "$COUNTRIES" | tr ',' ' '); do cp "$MWM_DIR/$c.mwm" "$DEST/"; done
 
 PYTHONPATH="$OM/tools/python" /om/venv/bin/python /om/make_countries.py "$OM" "$DEST" "$VERSION" > "$DEST/countries.json"
 # [{"<min app version>": <data version>}]: every app version gets the newest data.
 echo "[{\"0\": $VERSION}]" > "$OUT/data_version.json"
 cp "$DEST/countries.json" "$OUT/countries.json"
+
+# Country polygons for the built set only: the app must ship this file as data/packed_polygons.bin,
+# otherwise the map locates the user in a country that is not in countries.json and aborts.
+PACKED=$(find "$BUILD_DIR" -name packed_polygons.bin | head -1)
+if [ -n "$PACKED" ]; then cp "$PACKED" "$OUT/packed_polygons.bin"; fi
 
 echo "==> Published:"
 ls -la "$DEST"
