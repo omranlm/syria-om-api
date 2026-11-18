@@ -1,9 +1,9 @@
 import {authenticate} from '@loopback/authentication';
 import {inject, service} from '@loopback/core';
-import {get, HttpErrors, patch, requestBody} from '@loopback/rest';
+import {get, HttpErrors, patch, put, requestBody} from '@loopback/rest';
 import {SecurityBindings, securityId, UserProfile} from '@loopback/security';
 import {DbService} from '../services/db.service';
-import {publicUser, UserService} from '../services/user.service';
+import {PIN_RE, publicUser, UserService} from '../services/user.service';
 import {json} from './schemas';
 
 @authenticate('jwt')
@@ -35,6 +35,21 @@ export class MeController {
         movingTimeS: stats?.moving_time_s ?? 0,
       },
     };
+  }
+
+  /** Sets or changes the 6-digit PIN, e.g. after a forgotten PIN and a Telegram sign-in. */
+  @put('/me/pin')
+  async setPin(
+    @requestBody(json({type: 'object', required: ['pin'], properties: {pin: {type: 'string', maxLength: 6}}}))
+    body: {pin: string},
+  ) {
+    if (!PIN_RE.test(body.pin)) throw new HttpErrors.BadRequest('The PIN must be 6 digits');
+    const user = await this.users.findById(this.profile[securityId]);
+    if (!user) throw new HttpErrors.Unauthorized('User no longer exists');
+    if (user.role === 'admin') throw new HttpErrors.Forbidden('The dashboard account uses its password');
+    const updated = await this.users.setPin(user.id, body.pin);
+    await this.users.logEvent(user.id, null, 'pin_set');
+    return publicUser(updated!);
   }
 
   @patch('/me')

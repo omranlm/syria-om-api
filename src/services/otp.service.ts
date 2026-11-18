@@ -17,7 +17,14 @@ export class OtpService {
     @inject(SMS_PROVIDER) private sms: SmsProvider,
   ) {}
 
+  /** Without a real SMS provider anyone could sign in to any number with the fixed code: refused then. */
+  private ensureAvailable(): void {
+    if (this.sms.name === 'fake' && !config.allowFakeOtp)
+      throw new HttpErrors.ServiceUnavailable('SMS sign-in is not available, use the PIN or Telegram');
+  }
+
   async request(phoneE164: string, ip: string | null): Promise<{expiresInS: number}> {
+    this.ensureAvailable();
     const byPhone = await this.db.one<{n: number}>(
       `SELECT count(*)::int AS n FROM otp_requests WHERE phone_e164 = $1 AND created_at > now() - interval '1 hour'`,
       [phoneE164],
@@ -45,6 +52,7 @@ export class OtpService {
   }
 
   async verify(phoneE164: string, code: string): Promise<void> {
+    this.ensureAvailable();
     const row = await this.db.one<{id: string; code_hash: string; attempts: number}>(
       `SELECT id, code_hash, attempts FROM otp_requests
        WHERE phone_e164 = $1 AND consumed_at IS NULL AND expires_at > now()

@@ -70,7 +70,7 @@ export class AdminController {
     @param.query.integer('offset') offset?: number,
   ) {
     const rows = await this.db.query<UserStatsRow>(
-      `SELECT u.id, u.phone_e164, u.display_name, u.role, u.status, u.created_at, u.last_seen_at,
+      `SELECT u.id, u.phone_e164, u.display_name, u.role, u.status, u.created_at, u.last_seen_at, u.phone_verified, (u.pin_hash IS NOT NULL) AS has_pin,
               COALESCE(st.sessions, 0) AS sessions, COALESCE(st.distance_m, 0) AS distance_m,
               COALESCE(st.moving_time_s, 0) AS moving_time_s, COALESCE(d.devices, 0) AS devices, st.last_session_at
        FROM users u
@@ -89,7 +89,7 @@ export class AdminController {
   @get('/admin/users/{id}')
   async user(@param.path.string('id') id: string) {
     const [row] = await this.db.query<UserStatsRow>(
-      `SELECT u.id, u.phone_e164, u.display_name, u.role, u.status, u.created_at, u.last_seen_at,
+      `SELECT u.id, u.phone_e164, u.display_name, u.role, u.status, u.created_at, u.last_seen_at, u.phone_verified, (u.pin_hash IS NOT NULL) AS has_pin,
               COALESCE(st.sessions, 0) AS sessions, COALESCE(st.distance_m, 0) AS distance_m,
               COALESCE(st.moving_time_s, 0) AS moving_time_s, COALESCE(d.devices, 0) AS devices, st.last_session_at
        FROM users u

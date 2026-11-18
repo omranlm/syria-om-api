@@ -5,8 +5,23 @@ import {OtpService} from '../services/otp.service';
 import {TelegramService} from '../services/telegram.service';
 import {normalizePhone} from '../services/phone';
 import {TokenService} from '../services/token.service';
-import {DeviceInput, publicUser, UserService} from '../services/user.service';
+import {DeviceInput, PIN_RE, publicUser, UserRow, UserService} from '../services/user.service';
 import {deviceSchema, json} from './schemas';
+
+const PIN_ATTEMPTS_PER_IP_PER_HOUR = 60;
+const pinAttemptsByIp = new Map<string, {count: number; since: number}>();
+
+function limitPinAttempts(ip: string | null): void {
+  if (!ip) return;
+  const now = Date.now();
+  const entry = pinAttemptsByIp.get(ip);
+  if (!entry || now - entry.since > 3_600_000) {
+    pinAttemptsByIp.set(ip, {count: 1, since: now});
+    return;
+  }
+  entry.count++;
+  if (entry.count > PIN_ATTEMPTS_PER_IP_PER_HOUR) throw new HttpErrors.TooManyRequests('Too many requests, try again later');
+}
 
 export class AuthController {
   constructor(
@@ -42,7 +57,7 @@ export class AuthController {
     const phone = normalizePhone(body.phone);
     if (!phone) throw new HttpErrors.BadRequest('Invalid phone number');
     await this.otp.verify(phone, body.code);
-    const user = await this.users.findOrCreateByPhone(phone);
+    const user = await this.verifiedOwner(await this.users.findOrCreateByPhone(phone));
     if (user.status !== 'active') throw new HttpErrors.Forbidden('Account is blocked');
     const deviceId = await this.users.upsertDevice(user.id, body.device);
     const pair = await this.tokens.issuePair(user.id, user.role, deviceId);
@@ -75,7 +90,7 @@ export class AuthController {
   ) {
     const state = await this.telegram.collect(body.loginId, body.pollSecret);
     if (state.status !== 'verified') return {status: state.status};
-    const user = await this.users.findOrCreateByPhone(state.phone);
+    const user = await this.verifiedOwner(await this.users.findOrCreateByPhone(state.phone));
     if (user.status !== 'active') throw new HttpErrors.Forbidden('Account is blocked');
     await this.users.linkIdentity(user.id, 'telegram', state.telegramUserId);
     const deviceId = await this.users.upsertDevice(user.id, body.device);
@@ -83,6 +98,39 @@ export class AuthController {
     await this.users.touch(user.id);
     await this.users.logEvent(user.id, deviceId, 'login', {method: 'telegram'});
     return {status: 'verified', ...pair, user: publicUser(user)};
+  }
+
+  /** Phone number + 6-digit PIN: registers a new number right away, otherwise checks the PIN. */
+  @post('/auth/pin/login')
+  async pinLogin(
+    @requestBody(
+      json({
+        type: 'object',
+        required: ['phone', 'pin', 'device'],
+        properties: {phone: {type: 'string', maxLength: 32}, pin: {type: 'string', maxLength: 6}, device: deviceSchema},
+      }),
+    )
+    body: {phone: string; pin: string; device: DeviceInput},
+  ) {
+    const phone = normalizePhone(body.phone);
+    if (!phone) throw new HttpErrors.BadRequest('Invalid phone number');
+    if (!PIN_RE.test(body.pin)) throw new HttpErrors.BadRequest('The PIN must be 6 digits');
+    limitPinAttempts(clientIp(this.request));
+    const {user, created} = await this.users.pinLogin(phone, body.pin);
+    if (user.status !== 'active') throw new HttpErrors.Forbidden('Account is blocked');
+    const deviceId = await this.users.upsertDevice(user.id, body.device);
+    const pair = await this.tokens.issuePair(user.id, user.role, deviceId);
+    await this.users.touch(user.id);
+    await this.users.logEvent(user.id, deviceId, 'login', {method: 'pin', created});
+    return {...pair, created, user: publicUser(user)};
+  }
+
+  /** Confirmation by SMS or Telegram: a number someone registered with a PIN goes to its real owner. */
+  private async verifiedOwner(user: UserRow): Promise<UserRow> {
+    if (!(await this.users.markPhoneVerified(user.id))) return user;
+    await this.tokens.revokeAllForUser(user.id);
+    await this.users.logEvent(user.id, null, 'phone_verified', {pinCleared: true});
+    return (await this.users.findById(user.id)) ?? user;
   }
 
   @post('/auth/refresh')

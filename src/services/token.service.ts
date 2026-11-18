@@ -70,6 +70,13 @@ export class TokenService {
     return {...pair, userId: row.user_id};
   }
 
+  /** Signs the user out everywhere (refresh tokens; access tokens expire within the hour). */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [
+      userId,
+    ]);
+  }
+
   /** Revokes the token and returns its owner when it was still active. */
   async revoke(refreshToken: string): Promise<{userId: string; deviceId: string | null} | undefined> {
     const row = await this.db.one<{user_id: string; device_id: string | null}>(

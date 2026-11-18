@@ -13,6 +13,8 @@ export interface UserRow {
   status: 'active' | 'blocked';
   created_at: Date;
   last_seen_at: Date | null;
+  phone_verified: boolean;
+  has_pin: boolean;
 }
 export interface DeviceInput {
   id: string;
@@ -22,7 +24,8 @@ export interface DeviceInput {
   appVersion?: string;
 }
 
-const USER_COLS = 'id, phone_e164, display_name, role, status, created_at, last_seen_at';
+const USER_COLS =
+  'id, phone_e164, display_name, role, status, created_at, last_seen_at, phone_verified, (pin_hash IS NOT NULL) AS has_pin';
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function publicUser(u: UserRow) {
@@ -34,8 +37,17 @@ export function publicUser(u: UserRow) {
     status: u.status,
     createdAt: u.created_at,
     lastSeenAt: u.last_seen_at,
+    phoneVerified: u.phone_verified,
+    hasPin: u.has_pin,
   };
 }
+
+/** Wrong PINs before the account is locked, and how long (longer once it keeps happening). */
+const PIN_MAX_FAILED = 5;
+const PIN_LOCK_MINUTES = 15;
+const PIN_LONG_LOCK_FAILED = 10;
+const PIN_LONG_LOCK_MINUTES = 60;
+export const PIN_RE = /^\d{6}$/;
 
 @injectable({scope: BindingScope.SINGLETON})
 export class UserService {
@@ -67,6 +79,101 @@ export class UserService {
       `INSERT INTO auth_identities (user_id, provider, subject) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
       [userId, provider, subject],
     );
+  }
+
+  /**
+   * Phone + PIN sign-in. A number without an account registers right away (unverified); an account that
+   * came from the SMS code or Telegram has no PIN yet and must set one after signing in that way.
+   */
+  async pinLogin(phoneE164: string, pin: string): Promise<{user: UserRow; created: boolean}> {
+    // Refusals are returned, not thrown, inside the transaction: a throw would roll back the failure count.
+    const result = await this.db.tx<{user: UserRow; created: boolean} | {refuse: () => Error}>(async c => {
+      const row = (
+        await c.query<{id: string; role: Role; pin_hash: string | null; pin_failed: number; locked_s: number | null}>(
+          `SELECT id, role, pin_hash, pin_failed,
+                  CEIL(EXTRACT(EPOCH FROM (pin_locked_until - now())))::int AS locked_s
+           FROM users WHERE phone_e164 = $1 FOR UPDATE`,
+          [phoneE164],
+        )
+      ).rows[0];
+
+      if (!row) {
+        const created = (
+          await c.query<UserRow>(
+            `INSERT INTO users (phone_e164, pin_hash, phone_verified) VALUES ($1, $2, false) RETURNING ${USER_COLS}`,
+            [phoneE164, await bcrypt.hash(pin, 10)],
+          )
+        ).rows[0];
+        await c.query(`INSERT INTO auth_identities (user_id, provider, subject) VALUES ($1, 'pin', $2)`, [
+          created.id,
+          phoneE164,
+        ]);
+        return {user: created, created: true};
+      }
+      // The dashboard account is reached with its password only.
+      if (row.role === 'admin')
+        return {refuse: () => new HttpErrors.Forbidden('Use the dashboard to sign in to this account')};
+      const lockedS = row.locked_s ?? 0;
+      if (lockedS > 0)
+        return {
+          refuse: () =>
+            new HttpErrors.TooManyRequests(`Too many wrong PINs, try again in ${Math.ceil(lockedS / 60)} min`),
+        };
+      if (!row.pin_hash) {
+        return {
+          refuse: () => {
+            const err = new HttpErrors.Conflict('This number has no PIN yet: sign in with Telegram or an SMS code first');
+            (err as {code?: string}).code = 'pin_not_set';
+            return err;
+          },
+        };
+      }
+      if (!(await bcrypt.compare(pin, row.pin_hash))) {
+        const failed = row.pin_failed + 1;
+        const lockMinutes =
+          failed >= PIN_LONG_LOCK_FAILED ? PIN_LONG_LOCK_MINUTES : failed >= PIN_MAX_FAILED ? PIN_LOCK_MINUTES : 0;
+        await c.query(
+          `UPDATE users SET pin_failed = $2,
+                  pin_locked_until = CASE WHEN $3::int > 0 THEN now() + ($3 || ' minutes')::interval END
+           WHERE id = $1`,
+          [row.id, failed, lockMinutes],
+        );
+        if (lockMinutes > 0)
+          return {refuse: () => new HttpErrors.TooManyRequests(`Too many wrong PINs, try again in ${lockMinutes} min`)};
+        return {refuse: () => new HttpErrors.Unauthorized('Wrong PIN')};
+      }
+      const user = (
+        await c.query<UserRow>(
+          `UPDATE users SET pin_failed = 0, pin_locked_until = NULL WHERE id = $1 RETURNING ${USER_COLS}`,
+          [row.id],
+        )
+      ).rows[0];
+      return {user, created: false};
+    });
+    if ('refuse' in result) throw result.refuse();
+    return result;
+  }
+
+  async setPin(userId: string, pin: string): Promise<UserRow | undefined> {
+    const hash = await bcrypt.hash(pin, 10);
+    return this.db.one<UserRow>(
+      `UPDATE users SET pin_hash = $2, pin_failed = 0, pin_locked_until = NULL WHERE id = $1 RETURNING ${USER_COLS}`,
+      [userId, hash],
+    );
+  }
+
+  /**
+   * The number was just confirmed by the SMS code or Telegram. If it had registered unverified with a PIN,
+   * its owner takes it over: the PIN chosen by whoever registered it is dropped. Returns true then, so
+   * the caller signs out the other sessions.
+   */
+  async markPhoneVerified(userId: string): Promise<boolean> {
+    const row = await this.db.one<{id: string}>(
+      `UPDATE users SET phone_verified = true, pin_hash = NULL, pin_failed = 0, pin_locked_until = NULL
+       WHERE id = $1 AND NOT phone_verified RETURNING id`,
+      [userId],
+    );
+    return !!row;
   }
 
   async touch(id: string): Promise<void> {

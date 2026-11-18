@@ -11,6 +11,8 @@ export const config = {
   refreshTtlDays: Number(env('REFRESH_TOKEN_TTL_DAYS', '30')),
   smsProvider: env('SMS_PROVIDER', 'fake'),
   fakeOtpCode: env('FAKE_OTP_CODE', '123456'),
+  // The fake SMS provider accepts FAKE_OTP_CODE for every number: only for local development.
+  allowFakeOtp: env('ALLOW_FAKE_OTP', 'false') === 'true',
   otpTtlS: Number(env('OTP_TTL_S', '300')),
   defaultCountry: env('DEFAULT_COUNTRY', 'SY'),
   adminPhone: env('ADMIN_PHONE', '+963000000000'),

@@ -150,7 +150,7 @@
 
   async function loadUsers() {
     const rows = await api('/admin/users?q=' + encodeURIComponent($('#u-q').value));
-    $('#u-rows').innerHTML = rows.map(u => `<tr class="row" data-id="${u.id}"><td>${esc(u.phone)}</td><td>${esc(u.displayName || '')}</td><td>${esc(u.role)}</td><td>${pill(u.status)}</td>
+    $('#u-rows').innerHTML = rows.map(u => `<tr class="row" data-id="${u.id}"><td>${esc(u.phone)} ${u.phoneVerified ? '<span class="pill active" title="Confirmed by SMS or Telegram">verified</span>' : '<span class="pill blocked" title="Registered with a PIN, number not confirmed">unverified</span>'}${u.hasPin ? ' <span class="pill" title="Can sign in with a PIN">PIN</span>' : ''}</td><td>${esc(u.displayName || '')}</td><td>${esc(u.role)}</td><td>${pill(u.status)}</td>
       <td>${u.stats.sessions}</td><td>${km(u.stats.distanceM)}</td><td>${dur(u.stats.movingTimeS)}</td><td>${u.stats.devices}</td><td>${when(u.lastSeenAt)}</td>
       <td><button class="ghost" data-act="${u.status === 'active' ? 'blocked' : 'active'}" data-id="${u.id}">${u.status === 'active' ? 'Block' : 'Unblock'}</button>
           <button class="ghost" data-sessions="${u.id}">Sessions</button></td></tr>`).join('') || '<tr><td colspan="10">No users</td></tr>';
