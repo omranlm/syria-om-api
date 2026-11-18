@@ -2,6 +2,7 @@ import {inject, service} from '@loopback/core';
 import {HttpErrors, post, Request, requestBody, RestBindings} from '@loopback/rest';
 import {clientIp} from '../auth/jwt.strategy';
 import {OtpService} from '../services/otp.service';
+import {TelegramService} from '../services/telegram.service';
 import {normalizePhone} from '../services/phone';
 import {TokenService} from '../services/token.service';
 import {DeviceInput, publicUser, UserService} from '../services/user.service';
@@ -12,6 +13,7 @@ export class AuthController {
     @service(OtpService) private otp: OtpService,
     @service(TokenService) private tokens: TokenService,
     @service(UserService) private users: UserService,
+    @service(TelegramService) private telegram: TelegramService,
     @inject(RestBindings.Http.REQUEST) private request: Request,
   ) {}
 
@@ -47,6 +49,40 @@ export class AuthController {
     await this.users.touch(user.id);
     await this.users.logEvent(user.id, deviceId, 'login', {method: 'phone'});
     return {...pair, user: publicUser(user)};
+  }
+
+  /** Starts a Telegram sign-in: the app opens botUrl, then polls /auth/telegram/poll with the secret. */
+  @post('/auth/telegram/start')
+  async startTelegram(): Promise<{loginId: string; pollSecret: string; botUrl: string; expiresInS: number}> {
+    return this.telegram.startLogin(clientIp(this.request));
+  }
+
+  /** {status: 'pending' | 'bound'} until the user shared their number with the bot, then the tokens. */
+  @post('/auth/telegram/poll')
+  async pollTelegram(
+    @requestBody(
+      json({
+        type: 'object',
+        required: ['loginId', 'pollSecret', 'device'],
+        properties: {
+          loginId: {type: 'string', format: 'uuid'},
+          pollSecret: {type: 'string', maxLength: 128},
+          device: deviceSchema,
+        },
+      }),
+    )
+    body: {loginId: string; pollSecret: string; device: DeviceInput},
+  ) {
+    const state = await this.telegram.collect(body.loginId, body.pollSecret);
+    if (state.status !== 'verified') return {status: state.status};
+    const user = await this.users.findOrCreateByPhone(state.phone);
+    if (user.status !== 'active') throw new HttpErrors.Forbidden('Account is blocked');
+    await this.users.linkIdentity(user.id, 'telegram', state.telegramUserId);
+    const deviceId = await this.users.upsertDevice(user.id, body.device);
+    const pair = await this.tokens.issuePair(user.id, user.role, deviceId);
+    await this.users.touch(user.id);
+    await this.users.logEvent(user.id, deviceId, 'login', {method: 'telegram'});
+    return {status: 'verified', ...pair, user: publicUser(user)};
   }
 
   @post('/auth/refresh')

@@ -11,6 +11,7 @@ import {MaintenanceService} from './services/maintenance.service';
 import {OtpService} from './services/otp.service';
 import {createSmsProvider, SMS_PROVIDER} from './services/sms.service';
 import {SyncService} from './services/sync.service';
+import {TelegramService} from './services/telegram.service';
 import {TokenService} from './services/token.service';
 import {UserService} from './services/user.service';
 
@@ -36,6 +37,7 @@ export class SyriaOmApiApplication extends BootMixin(RestApplication) {
     this.service(UserService);
     this.service(SyncService);
     this.service(MaintenanceService);
+    this.service(TelegramService);
     this.bind(SMS_PROVIDER).to(createSmsProvider());
 
     this.static('/admin', path.join(__dirname, '../../public/admin'));
@@ -48,6 +50,7 @@ export class SyriaOmApiApplication extends BootMixin(RestApplication) {
     this.onStop(async () => {
       const maintenance = await this.get<MaintenanceService>('services.MaintenanceService');
       maintenance.stopTimer();
+      (await this.get<TelegramService>('services.TelegramService')).stop();
       const db = await this.get<DbService>('services.DbService');
       await db.close();
     });
@@ -61,5 +64,6 @@ export class SyriaOmApiApplication extends BootMixin(RestApplication) {
     await users.seedAdmin();
     const maintenance = await this.get<MaintenanceService>('services.MaintenanceService');
     await maintenance.start();
+    (await this.get<TelegramService>('services.TelegramService')).start();
   }
 }

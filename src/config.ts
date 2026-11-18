@@ -16,4 +16,7 @@ export const config = {
   adminPhone: env('ADMIN_PHONE', '+963000000000'),
   adminPassword: env('ADMIN_PASSWORD', 'ChangeMe123!'),
   retentionYears: Number(env('RETENTION_YEARS', '5')),
+  // Sign-in through a Telegram bot (off when either is empty). Username without the @.
+  telegramBotToken: env('TELEGRAM_BOT_TOKEN', ''),
+  telegramBotUsername: env('TELEGRAM_BOT_USERNAME', '').replace(/^@/, ''),
 };

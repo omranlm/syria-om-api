@@ -61,6 +61,14 @@ export class UserService {
     });
   }
 
+  /** Remembers another way this user signs in (e.g. their Telegram account); the first link wins. */
+  async linkIdentity(userId: string, provider: 'telegram' | 'google', subject: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO auth_identities (user_id, provider, subject) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [userId, provider, subject],
+    );
+  }
+
   async touch(id: string): Promise<void> {
     await this.db.query('UPDATE users SET last_seen_at = now() WHERE id = $1', [id]);
   }
