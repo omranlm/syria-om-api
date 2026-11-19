@@ -34,6 +34,20 @@ journalctl -u syria-om-api -n 30
 
 Updating the website: copy `Syria/website/*.html` of the app repo to `/var/www/organicmaps-site/`.
 
+## App downloads (until the app is on Google Play)
+
+`/var/www/organicmaps-site/apps/` holds the two release APKs, served at
+`https://organicmaps.openstreetmap.sy/apps/SyriaOrganicMaps-google.apk` and `…-huawei.apk` (the website's
+"تنزيل التطبيق" buttons), and `version.json`, which the app reads to show "New version available" on APK installs.
+Publish every release from the app repo, after building the public Google and Huawei release APKs:
+
+```bash
+python Syria/publish_release.py Syria/dist/<google>.apk Syria/dist/<huawei>.apk   --notes-ar "…" --notes-en "…" [--min-google CODE --min-huawei CODE]
+```
+
+It uploads the APKs first and `version.json` last; `--min-*` makes the update required below that version code.
+Installs from Google Play use Play's own update prompt instead.
+
 ## Setting it up again from scratch
 
 1. Swap (1 GB), Node.js 22 (NodeSource apt repository), `postgresql-16-postgis-3`, `python3-venv`,
