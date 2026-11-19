@@ -47,6 +47,7 @@ export class MeController {
     const user = await this.users.findById(this.profile[securityId]);
     if (!user) throw new HttpErrors.Unauthorized('User no longer exists');
     if (user.role === 'admin') throw new HttpErrors.Forbidden('The dashboard account uses its password');
+    if (user.anonymous) throw new HttpErrors.Forbidden('An anonymous account has no phone number to sign in with');
     const updated = await this.users.setPin(user.id, body.pin);
     await this.users.logEvent(user.id, null, 'pin_set');
     return publicUser(updated!);

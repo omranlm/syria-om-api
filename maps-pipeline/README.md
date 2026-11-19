@@ -1,7 +1,8 @@
 # Syria maps pipeline
 
-Turns the Geofabrik OpenStreetMap extract of Syria into the `.mwm` file the app downloads on first
-launch, and publishes it in the layout Organic Maps expects:
+Publishes the map files the app downloads, in the layout Organic Maps expects. In production they are the
+Organic Maps ones, refreshed monthly (see "Monthly update from Organic Maps" below); `run.sh` can instead build
+`Syria.mwm` from the Geofabrik OpenStreetMap extract (parked for now):
 
 ```
 out/
@@ -27,6 +28,53 @@ Only use files built by this pipeline (same commit as the app) or taken from the
 Syria) and `WorldCoasts.mwm` (sea) are taken from the Organic Maps CDN and published next to
 `Syria.mwm`. The app can also run without them (`WORLD_SOURCE=none`): the storage code skips
 World files that are not listed in `countries.json`.
+
+## Monthly update from Organic Maps (production)
+
+The maps we publish are the Organic Maps ones: `update-maps.sh` (→ `update_from_om.py`) checks once a
+month whether Organic Maps released newer map data, and if so:
+
+1. reads the newest version from `data/countries.json` on the Organic Maps master branch (the CDN's own
+   `data_version.json` is stale);
+2. downloads `World.mwm`, `WorldCoasts.mwm` and `Syria.mwm` of that version from `cdn.organicmaps.app` (one
+   ~160 MB download per month for the server; phones download from our server only) and checks the size and
+   blake3 hash of each against the CDN's `countries.json`;
+3. publishes `out/maps/<v>/` with a `countries.json` listing only those files, then bumps `out/countries.json`
+   and `out/data_version.json`. Phones see the update the next time the map opens ("Update all", ~160 MB);
+4. deletes old version folders, keeping the newest 4 (`KEEP_VERSIONS`) and the versions in
+   `pinned-versions.txt`: those bundled in released APKs, which a fresh install downloads on its first start.
+   **Add the bundled version (`data/countries.json` "v" in the app repo) of every released APK there.**
+
+Safety check: a map stores its feature types as positions in Organic Maps' `data/types.txt`. If the upstream
+list differs from `app-types.txt` (a copy of the app's `data/types.txt`), the new version is downloaded but not
+published (exit code 3, "NOT PUBLISHED" in the log). Release an app built from newer Organic Maps code first,
+copy its `data/types.txt` to `app-types.txt`, and run the script again (`--publish-anyway` skips the check).
+
+Manual runs: `./update-maps.sh --dry-run` (only report), `./update-maps.sh --version 261110`
+(publish a given version). Exit codes: 0 published or up to date, 1 error, 3 not published (types differ).
+
+### Monthly update on the server (Ubuntu VPS)
+
+```bash
+# Once: a user that owns the published folder, Python and the repo in /opt/syria-om-api
+sudo apt install -y python3-venv
+sudo useradd --system --home /opt/syria-om-api syriaom
+sudo chown -R syriaom: /opt/syria-om-api/maps-pipeline
+sudo timedatectl set-timezone Asia/Damascus
+
+# First run by hand (creates .venv with blake3 and publishes the newest version)
+sudo -u syriaom /opt/syria-om-api/maps-pipeline/update-maps.sh
+
+# Monthly timer: first Friday of the month, 03:00 (+ up to 30 min); catches up after downtime
+sudo cp /opt/syria-om-api/maps-pipeline/systemd/syria-maps-update.* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now syria-maps-update.timer
+systemctl list-timers syria-maps-update.timer     # next run
+journalctl -u syria-maps-update.service -n 50     # log of the last runs
+```
+
+Without systemd, a cron line on the 1st of each month: `0 3 1 * * /opt/syria-om-api/maps-pipeline/update-maps.sh
+>> /var/log/syria-maps-update.log 2>&1`.
 
 ## Important: the app's bundled files must match
 

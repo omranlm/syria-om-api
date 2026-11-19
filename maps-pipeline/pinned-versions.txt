@@ -1,0 +1,4 @@
+# Map versions bundled in APKs that people may still install: a fresh install downloads its bundled version
+# (data/countries.json "v" in the app repo) on the first start, so these folders are never deleted.
+# Add the version of each released APK; remove one once nobody installs that APK any more.
+261116

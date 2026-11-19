@@ -1,0 +1,15 @@
+# Publishes the newest Organic Maps data for Syria (run monthly by syria-maps-update.timer).
+# Install: see maps-pipeline/README.md, "Monthly update on the server". Paths assume the repo in /opt/syria-om-api.
+[Unit]
+Description=Syria Organic Maps: monthly map data update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=syriaom
+WorkingDirectory=/opt/syria-om-api/maps-pipeline
+ExecStart=/opt/syria-om-api/maps-pipeline/update-maps.sh
+# Exit code 3 (downloaded but not published, the type lists differ) shows as failed in systemctl status.
+Nice=10
+IOSchedulingClass=idle

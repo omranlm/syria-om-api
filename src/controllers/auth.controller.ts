@@ -125,6 +125,28 @@ export class AuthController {
     return {...pair, created, user: publicUser(user)};
   }
 
+  /** Anonymous recording: signs an app install in without a phone number (created on the first call). */
+  @post('/auth/device')
+  async deviceLogin(
+    @requestBody(
+      json({
+        type: 'object',
+        required: ['secret', 'device'],
+        properties: {secret: {type: 'string', minLength: 32, maxLength: 128}, device: deviceSchema},
+      }),
+    )
+    body: {secret: string; device: DeviceInput},
+  ) {
+    limitPinAttempts(clientIp(this.request));
+    const {user, created} = await this.users.deviceLogin(body.device.id, body.secret);
+    if (user.status !== 'active') throw new HttpErrors.Forbidden('Account is blocked');
+    const deviceId = await this.users.upsertDevice(user.id, body.device);
+    const pair = await this.tokens.issuePair(user.id, user.role, deviceId);
+    await this.users.touch(user.id);
+    await this.users.logEvent(user.id, deviceId, 'login', {method: 'device', created});
+    return {...pair, created, user: publicUser(user)};
+  }
+
   /** Confirmation by SMS or Telegram: a number someone registered with a PIN goes to its real owner. */
   private async verifiedOwner(user: UserRow): Promise<UserRow> {
     if (!(await this.users.markPhoneVerified(user.id))) return user;

@@ -15,6 +15,7 @@ export interface UserRow {
   last_seen_at: Date | null;
   phone_verified: boolean;
   has_pin: boolean;
+  anonymous: boolean;
 }
 export interface DeviceInput {
   id: string;
@@ -25,7 +26,7 @@ export interface DeviceInput {
 }
 
 const USER_COLS =
-  'id, phone_e164, display_name, role, status, created_at, last_seen_at, phone_verified, (pin_hash IS NOT NULL) AS has_pin';
+  'id, phone_e164, display_name, role, status, created_at, last_seen_at, phone_verified, (pin_hash IS NOT NULL) AS has_pin, anonymous';
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function publicUser(u: UserRow) {
@@ -39,6 +40,7 @@ export function publicUser(u: UserRow) {
     lastSeenAt: u.last_seen_at,
     phoneVerified: u.phone_verified,
     hasPin: u.has_pin,
+    anonymous: u.anonymous,
   };
 }
 
@@ -151,6 +153,38 @@ export class UserService {
       return {user, created: false};
     });
     if ('refuse' in result) throw result.refuse();
+    return result;
+  }
+
+  /**
+   * Anonymous recording: the account of an app install, without a phone number. Created on the first call;
+   * afterwards only the app holding the secret it registered with gets in.
+   */
+  async deviceLogin(deviceId: string, secret: string): Promise<{user: UserRow; created: boolean}> {
+    if (!UUID_RE.test(deviceId)) throw new HttpErrors.BadRequest('device.id must be a UUID');
+    const result = await this.db.tx<{user: UserRow; created: boolean} | null>(async c => {
+      const identity = (
+        await c.query<{user_id: string; secret_hash: string | null}>(
+          `SELECT user_id, secret_hash FROM auth_identities WHERE provider = 'device' AND subject = $1 FOR UPDATE`,
+          [deviceId],
+        )
+      ).rows[0];
+      if (identity) {
+        if (!identity.secret_hash || !(await bcrypt.compare(secret, identity.secret_hash))) return null;
+        const user = (await c.query<UserRow>(`SELECT ${USER_COLS} FROM users WHERE id = $1`, [identity.user_id]))
+          .rows[0];
+        return {user, created: false};
+      }
+      const created = (
+        await c.query<UserRow>(`INSERT INTO users (anonymous) VALUES (true) RETURNING ${USER_COLS}`)
+      ).rows[0];
+      await c.query(
+        `INSERT INTO auth_identities (user_id, provider, subject, secret_hash) VALUES ($1, 'device', $2, $3)`,
+        [created.id, deviceId, await bcrypt.hash(secret, 10)],
+      );
+      return {user: created, created: true};
+    });
+    if (!result) throw new HttpErrors.Unauthorized('This device is registered with another secret');
     return result;
   }
 

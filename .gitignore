@@ -4,3 +4,6 @@ dist/
 *.log
 maps-pipeline/work/
 maps-pipeline/out/
+maps-pipeline/.venv/
+maps-pipeline/.update.lock
+__pycache__/

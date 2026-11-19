@@ -110,6 +110,8 @@
   const when = d => d ? new Date(d).toLocaleString() : '–';
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
   const pill = s => `<span class="pill ${esc(s)}">${esc(s)}</span>`;
+  // Anonymous recording accounts have no phone number, one per app install.
+  const who = phone => phone ? esc(phone) : '<span class="pill" title="Records without a phone number (one app install)">anonymous</span>';
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {...opts, headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + store.token, ...(opts.headers || {})}});
@@ -150,7 +152,7 @@
 
   async function loadUsers() {
     const rows = await api('/admin/users?q=' + encodeURIComponent($('#u-q').value));
-    $('#u-rows').innerHTML = rows.map(u => `<tr class="row" data-id="${u.id}"><td>${esc(u.phone)} ${u.phoneVerified ? '<span class="pill active" title="Confirmed by SMS or Telegram">verified</span>' : '<span class="pill blocked" title="Registered with a PIN, number not confirmed">unverified</span>'}${u.hasPin ? ' <span class="pill" title="Can sign in with a PIN">PIN</span>' : ''}</td><td>${esc(u.displayName || '')}</td><td>${esc(u.role)}</td><td>${pill(u.status)}</td>
+    $('#u-rows').innerHTML = rows.map(u => `<tr class="row" data-id="${u.id}"><td>${who(u.phone)} ${!u.phone ? '' : u.phoneVerified ? '<span class="pill active" title="Confirmed by SMS or Telegram">verified</span>' : '<span class="pill blocked" title="Registered with a PIN, number not confirmed">unverified</span>'}${u.hasPin ? ' <span class="pill" title="Can sign in with a PIN">PIN</span>' : ''}</td><td>${esc(u.displayName || '')}</td><td>${esc(u.role)}</td><td>${pill(u.status)}</td>
       <td>${u.stats.sessions}</td><td>${km(u.stats.distanceM)}</td><td>${dur(u.stats.movingTimeS)}</td><td>${u.stats.devices}</td><td>${when(u.lastSeenAt)}</td>
       <td><button class="ghost" data-act="${u.status === 'active' ? 'blocked' : 'active'}" data-id="${u.id}">${u.status === 'active' ? 'Block' : 'Unblock'}</button>
           <button class="ghost" data-sessions="${u.id}">Sessions</button></td></tr>`).join('') || '<tr><td colspan="10">No users</td></tr>';
@@ -173,7 +175,7 @@
     if ($('#s-from').value) p.set('from', new Date($('#s-from').value).toISOString());
     if ($('#s-to').value) p.set('to', new Date(new Date($('#s-to').value).getTime() + 864e5).toISOString());
     const rows = await api('/admin/sessions?' + p);
-    $('#s-rows').innerHTML = rows.map(s => `<tr class="row" data-id="${s.id}"><td>${when(s.startedAt)}</td><td>${esc(s.userPhone)}</td><td>${pill(s.status)}</td>
+    $('#s-rows').innerHTML = rows.map(s => `<tr class="row" data-id="${s.id}"><td>${when(s.startedAt)}</td><td>${who(s.userPhone)}</td><td>${pill(s.status)}</td>
       <td>${km(s.distanceM)}</td><td>${km(s.clientDistanceM)}</td><td>${dur(s.movingTimeS)}</td><td>${s.pointCount}</td></tr>`).join('') || '<tr><td colspan="7">No sessions</td></tr>';
   }
   $('#s-go').onclick = loadSessions;
@@ -192,7 +194,7 @@
     if ($('#a-user').value) p.set('userId', $('#a-user').value.trim());
     if ($('#a-type').value) p.set('type', $('#a-type').value.trim());
     const rows = await api('/admin/activity?' + p);
-    $('#a-rows').innerHTML = rows.map(a => `<tr><td>${when(a.occurredAt)}</td><td>${esc(a.userPhone)}</td><td>${esc(a.type)}</td><td>${esc(a.sessionId ? a.sessionId.slice(0, 8) : '')}</td><td><pre>${esc(a.payload ? JSON.stringify(a.payload) : '')}</pre></td></tr>`).join('') || '<tr><td colspan="5">No events</td></tr>';
+    $('#a-rows').innerHTML = rows.map(a => `<tr><td>${when(a.occurredAt)}</td><td>${who(a.userPhone)}</td><td>${esc(a.type)}</td><td>${esc(a.sessionId ? a.sessionId.slice(0, 8) : '')}</td><td><pre>${esc(a.payload ? JSON.stringify(a.payload) : '')}</pre></td></tr>`).join('') || '<tr><td colspan="5">No events</td></tr>';
   }
   $('#a-go').onclick = loadActivity;
 

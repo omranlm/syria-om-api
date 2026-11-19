@@ -1,0 +1,12 @@
+# Monthly, on the first Friday of the month at night (server time, set the VPS to Asia/Damascus);
+# catches up after downtime.
+[Unit]
+Description=Syria Organic Maps: monthly map data update
+
+[Timer]
+OnCalendar=Fri *-*-01..07 03:00:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
