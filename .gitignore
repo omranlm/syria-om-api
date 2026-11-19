@@ -7,3 +7,4 @@ maps-pipeline/out/
 maps-pipeline/.venv/
 maps-pipeline/.update.lock
 __pycache__/
+.cache/
