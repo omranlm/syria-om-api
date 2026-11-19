@@ -44,7 +44,7 @@
 <body>
 <header>
   <h1>Syria Organic Maps — Admin</h1>
-  <a href="/explorer" target="_blank">API explorer</a>
+  <a id="explorer" href="/explorer" target="_blank">API explorer</a>
   <button id="logout" class="hidden">Log out</button>
 </header>
 
@@ -113,8 +113,12 @@
   // Anonymous recording accounts have no phone number, one per app install.
   const who = phone => phone ? esc(phone) : '<span class="pill" title="Records without a phone number (one app install)">anonymous</span>';
 
+  // Where the API is mounted: '' when the API serves this page directly, '/api' behind the VPS nginx.
+  const BASE = location.pathname.replace(/\/admin(\/.*)?$/, '');
+  $('#explorer').href = BASE + '/explorer';
+
   async function api(path, opts = {}) {
-    const res = await fetch(path, {...opts, headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + store.token, ...(opts.headers || {})}});
+    const res = await fetch(BASE + path, {...opts, headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + store.token, ...(opts.headers || {})}});
     if (res.status === 401 || res.status === 403) { if (store.token) { store.token = ''; showLogin('Session expired, log in again'); } throw new Error('unauthorized'); }
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error?.message || res.statusText);
     return res.json();
@@ -126,7 +130,7 @@
   $('#l-btn').onclick = async () => {
     $('#l-err').textContent = '';
     try {
-      const res = await fetch('/auth/admin/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({phone: $('#l-phone').value, password: $('#l-pass').value})});
+      const res = await fetch(BASE + '/auth/admin/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({phone: $('#l-phone').value, password: $('#l-pass').value})});
       if (!res.ok) throw new Error((await res.json()).error?.message || 'Login failed');
       store.token = (await res.json()).accessToken; showApp();
     } catch (e) { $('#l-err').textContent = e.message; }

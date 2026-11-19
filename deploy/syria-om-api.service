@@ -1,0 +1,23 @@
+# Syria Organic Maps API (LoopBack 4), behind nginx at https://organicmaps.openstreetmap.sy/api/
+# /etc/systemd/system/syria-om-api.service
+[Unit]
+Description=Syria Organic Maps API
+Wants=network-online.target
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=syriaom
+WorkingDirectory=/opt/syria-om-api
+EnvironmentFile=/opt/syria-om-api/.env
+Environment=NODE_ENV=production
+# Small droplet: keep the heap modest, PostgreSQL needs the rest.
+ExecStart=/usr/bin/node --max-old-space-size=192 dist/src/index.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
