@@ -6,7 +6,8 @@
 | URL | What | Served by |
 |---|---|---|
 | `/` | Website and privacy policy (`Syria/website/` of the app repo) | nginx, `/var/www/organicmaps-site` |
-| `/api/` | This API (`/api/admin/` = dashboard) | `syria-om-api.service` on 127.0.0.1:3000, nginx strips `/api` |
+| `/api/` | This API | `syria-om-api.service` on 127.0.0.1:3000, nginx strips `/api` |
+| `/admin/` | Admin dashboard (`admin/`, React) | built into `public/admin` with `VITE_API_BASE=/api`; nginx passes only the page and its files to the API; `/api/admin/` redirects here |
 | `/mapdata/` | Map files for the app (`data_version.json`, `maps/<v>/`, `terrain/<v>/`) | nginx, `/opt/syria-om-api/maps-pipeline/out` |
 
 HTTP redirects to HTTPS (Let's Encrypt, renewed by `certbot.timer`). `ufw` allows only 22, 80 and 443.
@@ -27,8 +28,8 @@ ssh syria-vps
 cd /opt/syria-om-api
 sudo -u syriaom git pull --ff-only
 sudo -u syriaom npm ci --no-audit --no-fund && sudo -u syriaom npm run build && sudo -u syriaom npm prune --omit=dev
-# Admin dashboard (React): built into public/admin, served at /api/admin/
-(cd admin && sudo -u syriaom npm ci --no-audit --no-fund && sudo -u syriaom npm run build)
+# Admin dashboard (React): built into public/admin, served at /admin/; it calls the API at /api
+(cd admin && sudo -u syriaom npm ci --no-audit --no-fund && sudo -u syriaom env VITE_API_BASE=/api npm run build)
 systemctl restart syria-om-api
 curl -s http://127.0.0.1:3000/health
 journalctl -u syria-om-api -n 30
