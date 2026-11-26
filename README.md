@@ -18,6 +18,23 @@ curl http://localhost:3000/health
 
 Phones on the same Wi-Fi reach the API at `http://<PC LAN IP>:3000` and maps at `http://<PC LAN IP>:8080/`.
 
+## Admin dashboard
+
+React + TypeScript app in `admin/` (Vite, React Router, TanStack Query, Leaflet), in the brand of
+`Syria/brand` in the app repo, Arabic first with English. The API serves the built files from `public/admin`
+(gitignored; the Dockerfile builds them).
+
+```bash
+docker compose up -d          # the API stays in Docker on :3000
+cd admin
+npm install
+npm run start                 # dev server on http://localhost:5173, /api is proxied to http://localhost:3000
+npm run build                 # type-check and build into ../public/admin
+```
+
+Set `API_URL` to proxy another API, e.g. `API_URL=https://organicmaps.openstreetmap.sy/api npm run start`.
+Lists are paginated on the server (`limit`/`offset`, `{items, total}`), sortable with whitelisted `sort`/`order`.
+
 ## Development without Docker for the API
 
 ```bash
@@ -38,7 +55,8 @@ npm test                        # unit tests + integration tests (skipped when t
 | `GET /me`, `PATCH /me` | user | profile and totals |
 | `POST /sync/batch` | user | offline outbox upload (sessions, segments, points, events); idempotent by UUID |
 | `GET /sessions`, `/sessions/{id}`, `/sessions/{id}/geojson`, `/sessions/{id}/points` | user | own history |
-| `GET /admin/stats`, `/admin/users`, `/admin/sessions`, `/admin/activity`, `/admin/sync-batches` | admin | dashboard data |
+| `GET /admin/stats`, `/admin/users`, `/admin/sessions`, `/admin/activity`, `/admin/sync-batches` | admin | dashboard data; lists return `{items, total}` |
+| `GET /admin/activity/types`, `/admin/live?minutes=15` | admin | event types with counts; latest live location per user |
 | `PATCH /admin/users/{id}` | admin | block / unblock, role |
 
 Distances are recomputed on the server from the stored points (`ST_Length` on the per-segment lines)

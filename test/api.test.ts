@@ -142,8 +142,18 @@ describe('API (integration)', function () {
       .expect(200);
     const stats = await client.get('/admin/stats').set('Authorization', `Bearer ${login.body.accessToken}`).expect(200);
     expect(stats.body.totals.sessions).to.be.greaterThanOrEqual(1);
-    const users = await client.get('/admin/users?q=' + phone.slice(-6)).set('Authorization', `Bearer ${login.body.accessToken}`).expect(200);
-    expect(users.body.some((u: {id: string}) => u.id === userId)).to.be.true();
+    const auth = `Bearer ${login.body.accessToken}`;
+    const users = await client.get('/admin/users?q=' + phone.slice(-6)).set('Authorization', auth).expect(200);
+    expect(users.body.items.some((u: {id: string}) => u.id === userId)).to.be.true();
+    expect(users.body.total).to.be.greaterThanOrEqual(1);
+    // Pages and whitelisted sorting; an unknown sort key falls back to the default order.
+    const sessions = await client.get('/admin/sessions?limit=1&sort=distance&order=asc').set('Authorization', auth).expect(200);
+    expect(sessions.body.items).to.have.length(1);
+    expect(sessions.body.total).to.be.greaterThanOrEqual(1);
+    await client.get('/admin/users?sort=password_hash;drop').set('Authorization', auth).expect(200);
+    const types = await client.get('/admin/activity/types').set('Authorization', auth).expect(200);
+    expect(types.body).to.be.an.Array();
+    await client.get('/admin/live?minutes=60').set('Authorization', auth).expect(200);
   });
 
   it('logs out', async () => {

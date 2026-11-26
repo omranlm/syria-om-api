@@ -4,3 +4,5 @@ dist
 .git
 maps-pipeline/work
 maps-pipeline/out
+admin/node_modules
+public/admin

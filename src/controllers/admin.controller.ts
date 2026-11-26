@@ -10,7 +10,26 @@ import {json} from './schemas';
 
 const clamp = (v: number | undefined, def: number, max: number) => Math.min(Math.max(v ?? def, 1), max);
 
+/** ORDER BY from a whitelisted column key, so the dashboard can sort without SQL injection. */
+const orderBy = (cols: Record<string, string>, sort: string | undefined, order: string | undefined, def: string) =>
+  `${cols[sort ?? ''] ?? cols[def]} ${order === 'asc' ? 'ASC' : 'DESC'} NULLS LAST`;
+
+/** One page of a list plus the number of rows matching the filters (from `count(*) OVER ()`). */
+function page<R extends {total_count?: number}, T>(rows: R[], map: (r: R) => T) {
+  return {items: rows.map(map), total: rows[0]?.total_count ?? 0};
+}
+
+const USER_SORT = {
+  created: 'u.created_at',
+  lastSeen: 'u.last_seen_at',
+  sessions: 'st.sessions',
+  distance: 'st.distance_m',
+  moving: 'st.moving_time_s',
+};
+const SESSION_SORT = {started: 's.started_at', distance: 's.distance_m', moving: 's.moving_time_s', points: 's.point_count'};
+
 interface UserStatsRow extends UserRow {
+  total_count?: number;
   sessions: number;
   distance_m: number;
   moving_time_s: number;
@@ -68,9 +87,11 @@ export class AdminController {
     @param.query.string('q') q?: string,
     @param.query.integer('limit') limit?: number,
     @param.query.integer('offset') offset?: number,
+    @param.query.string('sort') sort?: string,
+    @param.query.string('order') order?: string,
   ) {
     const rows = await this.db.query<UserStatsRow>(
-      `SELECT u.id, u.phone_e164, u.display_name, u.role, u.status, u.created_at, u.last_seen_at, u.phone_verified, (u.pin_hash IS NOT NULL) AS has_pin,
+      `SELECT count(*) OVER ()::int AS total_count, u.id, u.phone_e164, u.display_name, u.role, u.status, u.created_at, u.last_seen_at, u.phone_verified, (u.pin_hash IS NOT NULL) AS has_pin,
               COALESCE(st.sessions, 0) AS sessions, COALESCE(st.distance_m, 0) AS distance_m,
               COALESCE(st.moving_time_s, 0) AS moving_time_s, COALESCE(d.devices, 0) AS devices, st.last_session_at
        FROM users u
@@ -80,10 +101,10 @@ export class AdminController {
          FROM tracking_sessions WHERE user_id = u.id) st ON true
        LEFT JOIN LATERAL (SELECT count(*)::int AS devices FROM devices WHERE user_id = u.id) d ON true
        WHERE $1::text IS NULL OR u.phone_e164 ILIKE '%' || $1 || '%' OR u.display_name ILIKE '%' || $1 || '%'
-       ORDER BY u.created_at DESC LIMIT $2 OFFSET $3`,
+       ORDER BY ${orderBy(USER_SORT, sort, order, 'created')}, u.id LIMIT $2 OFFSET $3`,
       [q?.trim() || null, clamp(limit, 50, 500), Math.max(offset ?? 0, 0)],
     );
-    return rows.map(mapUserStats);
+    return page(rows, mapUserStats);
   }
 
   @get('/admin/users/{id}')
@@ -148,16 +169,18 @@ export class AdminController {
     @param.query.dateTime('to') to?: Date,
     @param.query.integer('limit') limit?: number,
     @param.query.integer('offset') offset?: number,
+    @param.query.string('sort') sort?: string,
+    @param.query.string('order') order?: string,
   ) {
-    const rows = await this.db.query<SessionRow>(
-      `SELECT ${SESSION_COLS}, u.phone_e164, u.display_name
+    const rows = await this.db.query<SessionRow & {total_count: number}>(
+      `SELECT count(*) OVER ()::int AS total_count, ${SESSION_COLS}, u.phone_e164, u.display_name
        FROM tracking_sessions s JOIN users u ON u.id = s.user_id
        WHERE ($1::uuid IS NULL OR s.user_id = $1) AND ($2::text IS NULL OR s.status = $2)
          AND ($3::timestamptz IS NULL OR s.started_at >= $3) AND ($4::timestamptz IS NULL OR s.started_at < $4)
-       ORDER BY s.started_at DESC LIMIT $5 OFFSET $6`,
+       ORDER BY ${orderBy(SESSION_SORT, sort, order, 'started')}, s.id LIMIT $5 OFFSET $6`,
       [userId ?? null, status ?? null, from ?? null, to ?? null, clamp(limit, 50, 500), Math.max(offset ?? 0, 0)],
     );
-    return rows.map(mapSession);
+    return page(rows, mapSession);
   }
 
   @get('/admin/sessions/{id}')
@@ -195,8 +218,8 @@ export class AdminController {
     @param.query.integer('limit') limit?: number,
     @param.query.integer('offset') offset?: number,
   ) {
-    return this.db.query(
-      `SELECT e.id, e.user_id AS "userId", u.phone_e164 AS "userPhone", e.device_id AS "deviceId",
+    const rows = await this.db.query<{total_count: number}>(
+      `SELECT count(*) OVER ()::int AS total_count, e.id, e.user_id AS "userId", u.phone_e164 AS "userPhone", e.device_id AS "deviceId",
               e.session_id AS "sessionId", e.type, e.occurred_at AS "occurredAt", e.payload, e.received_at AS "receivedAt"
        FROM activity_events e JOIN users u ON u.id = e.user_id
        WHERE ($1::uuid IS NULL OR e.user_id = $1) AND ($2::text IS NULL OR e.type = $2)
@@ -204,17 +227,44 @@ export class AdminController {
        ORDER BY e.occurred_at DESC LIMIT $5 OFFSET $6`,
       [userId ?? null, type ?? null, from ?? null, to ?? null, clamp(limit, 100, 1000), Math.max(offset ?? 0, 0)],
     );
+    return page(rows, ({total_count, ...r}) => r);
+  }
+
+  /** Event types seen so far with their counts, for the activity filter. */
+  @get('/admin/activity/types')
+  async activityTypes() {
+    return this.db.query(`SELECT type, count(*)::int AS count FROM activity_events GROUP BY type ORDER BY count DESC`);
+  }
+
+  /** The latest live location of every user who shared it in the last `minutes`. */
+  @get('/admin/live')
+  async live(@param.query.integer('minutes') minutes?: number) {
+    return this.db.query(
+      `SELECT DISTINCT ON (p.user_id) p.user_id AS "userId", u.phone_e164 AS "userPhone",
+              u.display_name AS "userDisplayName", p.recorded_at AS "recordedAt",
+              ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lon, p.accuracy_m AS "accuracyM",
+              p.speed_mps AS "speedMps", p.bearing_deg AS "bearingDeg", p.battery_pct AS "batteryPct"
+       FROM location_points p JOIN users u ON u.id = p.user_id
+       WHERE p.provider = 'live' AND p.recorded_at > now() - make_interval(mins => $1)
+       ORDER BY p.user_id, p.recorded_at DESC`,
+      [clamp(minutes, 15, 1440)],
+    );
   }
 
   @get('/admin/sync-batches')
-  async syncBatches(@param.query.string('userId') userId?: string, @param.query.integer('limit') limit?: number) {
-    return this.db.query(
-      `SELECT b.id, b.user_id AS "userId", u.phone_e164 AS "userPhone", b.device_id AS "deviceId",
+  async syncBatches(
+    @param.query.string('userId') userId?: string,
+    @param.query.integer('limit') limit?: number,
+    @param.query.integer('offset') offset?: number,
+  ) {
+    const rows = await this.db.query<{total_count: number}>(
+      `SELECT count(*) OVER ()::int AS total_count, b.id, b.user_id AS "userId", u.phone_e164 AS "userPhone", b.device_id AS "deviceId",
               b.received_at AS "receivedAt", b.client_sent_at AS "clientSentAt", b.sessions, b.segments, b.points,
               b.events, b.duration_ms AS "durationMs", b.app_version AS "appVersion"
        FROM sync_batches b JOIN users u ON u.id = b.user_id
-       WHERE ($1::uuid IS NULL OR b.user_id = $1) ORDER BY b.received_at DESC LIMIT $2`,
-      [userId ?? null, clamp(limit, 100, 1000)],
+       WHERE ($1::uuid IS NULL OR b.user_id = $1) ORDER BY b.received_at DESC LIMIT $2 OFFSET $3`,
+      [userId ?? null, clamp(limit, 100, 1000), Math.max(offset ?? 0, 0)],
     );
+    return page(rows, ({total_count, ...r}) => r);
   }
 }

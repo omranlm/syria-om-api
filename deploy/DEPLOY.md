@@ -27,6 +27,8 @@ ssh syria-vps
 cd /opt/syria-om-api
 sudo -u syriaom git pull --ff-only
 sudo -u syriaom npm ci --no-audit --no-fund && sudo -u syriaom npm run build && sudo -u syriaom npm prune --omit=dev
+# Admin dashboard (React): built into public/admin, served at /api/admin/
+(cd admin && sudo -u syriaom npm ci --no-audit --no-fund && sudo -u syriaom npm run build)
 systemctl restart syria-om-api
 curl -s http://127.0.0.1:3000/health
 journalctl -u syria-om-api -n 30

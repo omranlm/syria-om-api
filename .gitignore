@@ -8,3 +8,6 @@ maps-pipeline/.venv/
 maps-pipeline/.update.lock
 __pycache__/
 .cache/
+admin/node_modules/
+# Built from admin/ (npm run build there, or by the Dockerfile).
+public/admin/
