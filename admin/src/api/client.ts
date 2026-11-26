@@ -1,8 +1,10 @@
 /**
- * Where the API is mounted. In development the Vite proxy forwards /api to the Docker API. In production
- * the dashboard is served by the API itself: at /admin/ locally ('' base) or /api/admin/ behind the VPS nginx.
+ * Where the API is mounted. VITE_API_BASE set at build time wins: the VPS builds with VITE_API_BASE=/api, as
+ * nginx serves the dashboard at /admin/ and the API at /api/. In development the Vite proxy forwards /api to
+ * the Docker API. Otherwise the dashboard is served by the API itself, at /admin/ ('' base) or /api/admin/.
  */
-export const API_BASE = import.meta.env.DEV ? '/api' : location.pathname.replace(/\/admin(\/.*)?$/, '');
+export const API_BASE =
+  import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? '/api' : location.pathname.replace(/\/admin(\/.*)?$/, ''));
 
 const TOKEN_KEY = 'adminToken';
 
