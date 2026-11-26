@@ -17,6 +17,7 @@ describe('API (integration)', function () {
   let accessToken = '';
   let refreshToken = '';
   let userId = '';
+  let trackedSessionId = '';
 
   before(async function () {
     const pool = new Pool({connectionString: config.databaseUrl, connectionTimeoutMillis: 2000});
@@ -78,6 +79,7 @@ describe('API (integration)', function () {
 
   it('stores a tracking batch idempotently and computes the server distance', async () => {
     const sessionId = crypto.randomUUID();
+    trackedSessionId = sessionId;
     const segmentId = crypto.randomUUID();
     const t0 = Date.parse('2026-01-10T08:00:00Z');
     // Straight line in Damascus, ~111 m per 0.001 deg of latitude, 5 s apart: 10 points -> ~1 km.
@@ -96,7 +98,13 @@ describe('API (integration)', function () {
       sessions: [{id: sessionId, status: 'stopped', startedAt: points[0].recordedAt, endedAt: points[9].recordedAt, clientDistanceM: 999}],
       segments: [{id: segmentId, sessionId, seq: 0, startedAt: points[0].recordedAt, endedAt: points[9].recordedAt}],
       points,
-      events: [{id: crypto.randomUUID(), type: 'tracking_start', occurredAt: points[0].recordedAt, sessionId}],
+      events: [
+        {id: crypto.randomUUID(), type: 'tracking_start', occurredAt: points[0].recordedAt, sessionId,
+          payload: {batteryMode: 'unrestricted', powerSaver: false}},
+        // The app stopped the trip itself (no movement), with the battery settings at that moment.
+        {id: crypto.randomUUID(), type: 'tracking_stop', occurredAt: points[9].recordedAt, sessionId,
+          payload: {batteryMode: 'optimized', powerSaver: true, standbyBucket: 10, reason: 'not_moving'}},
+      ],
     };
 
     const first = await client.post('/sync/batch').set('Authorization', `Bearer ${accessToken}`).send(batch).expect(200);
@@ -154,6 +162,10 @@ describe('API (integration)', function () {
     const types = await client.get('/admin/activity/types').set('Authorization', auth).expect(200);
     expect(types.body).to.be.an.Array();
     await client.get('/admin/live?minutes=60').set('Authorization', auth).expect(200);
+    // Who ended the trip and the battery settings at its start and end.
+    const detail = await client.get(`/admin/sessions/${trackedSessionId}`).set('Authorization', auth).expect(200);
+    expect(detail.body.stopReason).to.equal('not_moving');
+    expect(detail.body.battery).to.containDeep({atStart: 'unrestricted', atStop: 'optimized', powerSaverAtStop: true, standbyBucketAtStop: 10});
   });
 
   it('logs out', async () => {

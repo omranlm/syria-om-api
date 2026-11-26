@@ -68,6 +68,8 @@ export interface Session {
   userId: string;
   deviceId: string | null;
   status: SessionStatus;
+  /** 'user' (Stop button) or 'not_moving' (auto stopped by the app); null for older apps and open trips. */
+  stopReason: string | null;
   name: string | null;
   startedAt: string;
   endedAt: string | null;
@@ -88,8 +90,23 @@ export interface Segment {
   distanceM: number | null;
 }
 
+export type BatteryMode = 'unrestricted' | 'optimized' | 'restricted';
+
+/** The phone's battery settings when the trip started and ended (see recording_battery on the server). */
+export interface SessionBattery {
+  atStart: BatteryMode | null;
+  atStop: BatteryMode | null;
+  powerSaverAtStart: boolean | null;
+  powerSaverAtStop: boolean | null;
+  standbyBucketAtStop: number | null;
+  locationPowerSaveAtStop: string | null;
+  /** Android stopped the app and the recording was restarted: a likely gap in the route. */
+  restarts: number;
+}
+
 export interface SessionDetail extends Session {
   segments: Segment[];
+  battery: SessionBattery;
 }
 
 /** One recorded location of a trip. */

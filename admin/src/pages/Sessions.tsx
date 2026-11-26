@@ -1,7 +1,7 @@
 import {useQuery} from '@tanstack/react-query';
 import {lazy, Suspense, useMemo} from 'react';
 import {q, usePagedQuery} from '../api/queries';
-import type {Session} from '../api/types';
+import type {BatteryMode, Session, SessionBattery} from '../api/types';
 import {PageHeader, Segmented, SessionStatusPill, ShortId, UserLabel} from '../components/Bits';
 import {DataTable, type Column} from '../components/DataTable';
 import {Icon} from '../components/Icon';
@@ -57,7 +57,7 @@ export default function Sessions() {
         ),
       },
       {key: 'user', header: t('colUser'), cell: s => <UserLabel phone={s.userPhone} name={s.userDisplayName} />},
-      {key: 'status', header: t('colStatus'), cell: s => <SessionStatusPill status={s.status} />},
+      {key: 'status', header: t('colStatus'), cell: s => <SessionStatusPill status={s.status} stopReason={s.stopReason} />},
       {key: 'distance', header: t('colDistance'), sort: 'distance', align: 'end', cell: s => <b>{fmt.km(s.distanceM, 2)}</b>},
       {
         key: 'client',
@@ -148,6 +148,26 @@ export default function Sessions() {
   );
 }
 
+/** "Optimized → Unrestricted · Power saver on · 1 restarts": the battery settings that explain gaps in a route. */
+function BatteryFacts({battery}: {battery: SessionBattery}) {
+  const {t, lang} = usePrefs();
+  const label = (m: BatteryMode | null) => (m ? t(`battery_${m}`) : '–');
+  const arrow = lang === 'ar' ? '←' : '→';
+  const {atStart, atStop} = battery;
+  if (!atStart && !atStop) return <>–</>;
+  const modes = atStop && atStop !== atStart ? `${label(atStart)} ${arrow} ${label(atStop)}` : label(atStart ?? atStop);
+  const extra = [
+    (battery.powerSaverAtStart || battery.powerSaverAtStop) && t('powerSaverOn'),
+    battery.restarts > 0 && `${battery.restarts} ${t('restarts')}`,
+  ].filter(Boolean);
+  return (
+    <>
+      {modes}
+      {extra.length > 0 && <small className="muted"> · {extra.join(' · ')}</small>}
+    </>
+  );
+}
+
 function SessionPanel({id}: {id: string}) {
   const {t, fmt} = usePrefs();
   const detail = useQuery(q.session(id));
@@ -173,7 +193,7 @@ function SessionPanel({id}: {id: string}) {
         <div className="session-facts">
           <div className="facts-head">
             <UserLabel phone={s.userPhone} name={s.userDisplayName} />
-            <SessionStatusPill status={s.status} />
+            <SessionStatusPill status={s.status} stopReason={s.stopReason} />
           </div>
           <dl className="facts">
             <div>
@@ -203,6 +223,22 @@ function SessionPanel({id}: {id: string}) {
             <div>
               <dt>{t('maxSpeed')}</dt>
               <dd>{topKmh === null ? '–' : `${fmt.num(Math.round(topKmh))} ${t('kmh')}`}</dd>
+            </div>
+            <div>
+              <dt>{t('endedBy')}</dt>
+              <dd>
+                {s.stopReason === 'not_moving'
+                  ? t('endedByNotMoving')
+                  : s.stopReason === 'user'
+                    ? t('endedByUser')
+                    : '–'}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('batteryMode')}</dt>
+              <dd>
+                <BatteryFacts battery={s.battery} />
+              </dd>
             </div>
             <div>
               <dt>{t('colStarted')}</dt>

@@ -4,7 +4,9 @@ import {DbService} from './db.service';
 export const SESSION_COLS = `
   s.id, s.user_id, s.device_id, s.status, s.name, s.started_at, s.ended_at,
   s.client_distance_m, s.client_moving_time_s, s.distance_m, s.moving_time_s, s.point_count,
-  s.created_at, s.updated_at, ST_AsGeoJSON(s.bbox)::json AS bbox`;
+  s.created_at, s.updated_at, ST_AsGeoJSON(s.bbox)::json AS bbox,
+  (SELECT e.payload ->> 'reason' FROM activity_events e
+   WHERE e.session_id = s.id AND e.type = 'tracking_stop' ORDER BY e.occurred_at DESC LIMIT 1) AS stop_reason`;
 
 export interface SessionRow {
   id: string;
@@ -22,6 +24,8 @@ export interface SessionRow {
   created_at: Date;
   updated_at: Date;
   bbox: object | null;
+  /** From the app's tracking_stop event: 'user' (Stop button) or 'not_moving' (auto stopped); null if unknown. */
+  stop_reason: string | null;
   phone_e164?: string | null;
   display_name?: string | null;
 }
@@ -32,6 +36,7 @@ export function mapSession(r: SessionRow) {
     userId: r.user_id,
     deviceId: r.device_id,
     status: r.status,
+    stopReason: r.stop_reason,
     name: r.name,
     startedAt: r.started_at,
     endedAt: r.ended_at,

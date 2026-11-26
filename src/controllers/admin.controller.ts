@@ -196,7 +196,30 @@ export class AdminController {
        FROM tracking_segments WHERE session_id = $1 ORDER BY seq`,
       [id],
     );
-    return {...mapSession(row), segments};
+    // The phone's battery settings when the trip started and ended (see recording_battery).
+    const battery = await this.db.one<{
+      mode_at_start: string | null; power_saver_at_start: boolean | null; mode_at_stop: string | null;
+      power_saver_at_stop: boolean | null; standby_bucket_at_stop: number | null;
+      location_power_save_at_stop: string | null; restarts: number;
+    }>(
+      `SELECT mode_at_start, power_saver_at_start, mode_at_stop, power_saver_at_stop, standby_bucket_at_stop,
+              location_power_save_at_stop, restarts
+       FROM recording_battery WHERE session_id = $1`,
+      [id],
+    );
+    return {
+      ...mapSession(row),
+      segments,
+      battery: {
+        atStart: battery?.mode_at_start ?? null,
+        atStop: battery?.mode_at_stop ?? null,
+        powerSaverAtStart: battery?.power_saver_at_start ?? null,
+        powerSaverAtStop: battery?.power_saver_at_stop ?? null,
+        standbyBucketAtStop: battery?.standby_bucket_at_stop ?? null,
+        locationPowerSaveAtStop: battery?.location_power_save_at_stop ?? null,
+        restarts: battery?.restarts ?? 0,
+      },
+    };
   }
 
   @get('/admin/sessions/{id}/geojson')

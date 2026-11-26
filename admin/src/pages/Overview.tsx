@@ -113,7 +113,7 @@ export default function Overview() {
                   </span>
                   <span className="tl-side">
                     <b>{fmt.km(s.distanceM)}</b>
-                    <SessionStatusPill status={s.status} />
+                    <SessionStatusPill status={s.status} stopReason={s.stopReason} />
                   </span>
                 </button>
               </li>

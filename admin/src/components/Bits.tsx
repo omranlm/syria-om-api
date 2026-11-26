@@ -25,8 +25,10 @@ export function Pill({tone = 'neutral', children, title}: {tone?: Tone; children
   );
 }
 
-export function SessionStatusPill({status}: {status: SessionStatus}) {
+/** A finished trip the app ended itself, because the user stopped moving, reads "Auto stopped". */
+export function SessionStatusPill({status, stopReason}: {status: SessionStatus; stopReason?: string | null}) {
   const {t} = usePrefs();
+  if (status === 'stopped' && stopReason === 'not_moving') return <Pill tone="teal">{t('stAutoStopped')}</Pill>;
   const map: Record<SessionStatus, [Tone, string]> = {
     active: ['amber', t('stActive')],
     paused: ['blue', t('stPaused')],
