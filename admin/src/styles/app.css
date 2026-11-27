@@ -1785,6 +1785,144 @@ select:focus {
   font-size: 13.5px;
 }
 
+/* ---------- Sign-in secrets: user drawer and profile ---------- */
+.credentials .section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.credentials .section-title .icon {
+  color: var(--teal);
+}
+.credentials > p {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+}
+.credential-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.credential-form input {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+}
+.credential-form input::placeholder {
+  font-family: var(--body);
+  letter-spacing: normal;
+}
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.check-row input {
+  accent-color: var(--teal);
+  min-height: 0;
+}
+/* A generated secret, shown once: dark card like the brand's hero, the value in teal light. */
+.secret {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.secret > span {
+  color: #aeb6c2;
+  font-size: 12.5px;
+}
+.secret code {
+  font: 600 22px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--teal-light);
+  user-select: all;
+  word-break: break-all;
+}
+.secret .btn.ghost {
+  color: #fff;
+}
+.secret small {
+  color: #c9cfd8;
+  font-size: 12.5px;
+}
+.credentials .saved-note {
+  margin-top: 10px;
+}
+.settings.profile-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-rows: auto;
+}
+.settings.profile-layout .setting:first-child {
+  grid-row: auto;
+}
+.account {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.account h2 {
+  font-size: 19px;
+  margin: 0 0 2px;
+}
+.account p {
+  margin: 4px 0;
+}
+.account .badges {
+  margin: 6px 0;
+}
+.account-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--teal-light);
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--road);
+}
+.account-phone {
+  font: 600 16px var(--display);
+}
+.password-form {
+  display: grid;
+  max-width: 420px;
+}
+.password-form .field small {
+  font: 400 12.5px var(--body);
+}
+.password-form input[aria-invalid='true'] {
+  border-color: var(--red-fg);
+}
+.password-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.nav-profile {
+  display: grid;
+  min-width: 0;
+}
+.nav-profile small {
+  color: #8f98a5;
+  font: 400 12px var(--body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- Login ---------- */
 .login {
   min-height: 100vh;

@@ -1,6 +1,8 @@
 import {useQuery} from '@tanstack/react-query';
+import {useState, type FormEvent} from 'react';
 import {Link} from 'react-router';
-import {q, useUpdateUser} from '../api/queries';
+import {q, useSetUserPassword, useUpdateUser} from '../api/queries';
+import type {PasswordResult, UserDetail} from '../api/types';
 import {CopyButton, Pill, UserBadges, UserLabel} from '../components/Bits';
 import {Drawer} from '../components/Drawer';
 import {Icon} from '../components/Icon';
@@ -79,6 +81,8 @@ export default function UserDrawer({id, onClose}: {id: string; onClose: () => vo
             ))}
           </ul>
 
+          {!u.anonymous && u.phone && <Credentials key={`${u.id}-${u.role}`} user={u} />}
+
           <div className="danger-zone">
             <button
               type="button"
@@ -111,5 +115,102 @@ export default function UserDrawer({id, onClose}: {id: string; onClose: () => vo
         </>
       )}
     </Drawer>
+  );
+}
+
+const PIN_RE = /^\d{6}$/;
+const PASSWORD_MIN = 8;
+
+/**
+ * The secret this account signs in with: the app PIN of a user, the dashboard password of an admin.
+ * The admin types one or generates one; a generated one is shown here once, to copy and send.
+ */
+function Credentials({user}: {user: UserDetail}) {
+  const {t} = usePrefs();
+  const me = useQuery(q.me());
+  const setPassword = useSetUserPassword();
+  const [value, setValue] = useState('');
+  const [signOut, setSignOut] = useState(false);
+  const [result, setResult] = useState<PasswordResult | null>(null);
+  const pin = user.role !== 'admin';
+  const valid = pin ? PIN_RE.test(value) : value.length >= PASSWORD_MIN;
+
+  if (me.data?.id === user.id)
+    return (
+      <section className="credentials">
+        <h3 className="section-title">{t('adminPwTitle')}</h3>
+        <p className="muted">
+          <Link to="/profile">{t('ownPasswordHint')}</Link>
+        </p>
+      </section>
+    );
+
+  const save = (typed: string | undefined) => {
+    if (!confirm(pin ? t('confirmSetPin') : t('confirmSetPassword'))) return;
+    setResult(null);
+    setPassword.mutate(
+      {id: user.id, value: typed, signOut},
+      {
+        onSuccess: r => {
+          setResult(r);
+          setValue('');
+        },
+      },
+    );
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (valid) save(value);
+  };
+
+  return (
+    <section className="credentials">
+      <h3 className="section-title">
+        <Icon name="key" size={16} /> {pin ? t('pinTitle') : t('adminPwTitle')}
+      </h3>
+      <p className="muted">{pin ? t('pinText') : t('adminPwText')}</p>
+      <form className="credential-form" onSubmit={submit}>
+        <input
+          type={pin ? 'text' : 'password'}
+          inputMode={pin ? 'numeric' : undefined}
+          dir="ltr"
+          autoComplete="off"
+          maxLength={pin ? 6 : 128}
+          placeholder={pin ? t('pinRule') : t('passwordRule')}
+          aria-label={pin ? t('pinTitle') : t('adminPwTitle')}
+          value={value}
+          onChange={e => setValue(pin ? e.target.value.replace(/\D/g, '') : e.target.value)}
+        />
+        <button type="submit" className="btn" disabled={!valid || setPassword.isPending}>
+          {t('setValue')}
+        </button>
+        <button type="button" className="btn primary" disabled={setPassword.isPending} onClick={() => save(undefined)}>
+          <Icon name="refresh" size={16} />
+          {t('generate')}
+        </button>
+      </form>
+      <label className="check-row">
+        <input type="checkbox" checked={signOut} onChange={e => setSignOut(e.target.checked)} />
+        <span>{t('signOutEverywhere')}</span>
+      </label>
+      {result?.generated && (
+        <div className="secret" role="status">
+          <span>{result.kind === 'pin' ? t('newPin') : t('newPassword')}</span>
+          <code dir="ltr">{result.generated}</code>
+          <CopyButton text={result.generated} label={t('copy')} />
+          <small>{t('shownOnce')}</small>
+        </div>
+      )}
+      {result && !result.generated && (
+        <p className="saved-note on" role="status">
+          <Icon name="leaf" size={16} /> {result.kind === 'pin' ? t('pinSaved') : t('passwordSaved')}
+        </p>
+      )}
+      {setPassword.error && (
+        <p className="form-error" role="alert" dir="auto">
+          {setPassword.error.message}
+        </p>
+      )}
+    </section>
   );
 }

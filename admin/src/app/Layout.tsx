@@ -28,6 +28,7 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   // How many people share their location now, for the badge on "On the road now" (shared cache with the Live page).
   const live = useQuery({...q.live(15), enabled: signedIn});
+  const me = useQuery({...q.me(), enabled: signedIn});
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -62,6 +63,18 @@ export function Layout() {
           ))}
         </nav>
         <div className="sidebar-foot">
+          <NavLink
+            to="/profile"
+            className={({isActive}) => `nav-item small${isActive ? ' active' : ''}`}
+            onMouseEnter={() => preload('profile')}
+            onFocus={() => preload('profile')}
+          >
+            <Icon name="user" />
+            <span className="nav-profile">
+              {t('navProfile')}
+              {me.data && <small dir="auto">{me.data.displayName || <bdi dir="ltr">{me.data.phone}</bdi>}</small>}
+            </span>
+          </NavLink>
           <a className="nav-item small" href={`${API_BASE}/explorer`} target="_blank" rel="noreferrer">
             <Icon name="code" />
             <span>{t('apiExplorer')}</span>

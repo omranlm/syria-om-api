@@ -17,6 +17,8 @@ import type {
   LivePosition,
   Order,
   Page,
+  PasswordResult,
+  Profile,
   Session,
   SessionDetail,
   Stats,
@@ -71,6 +73,7 @@ function dayIso(day: string, tz: string, endOfDay = false): string | undefined {
 
 // Query factories: one place for each key and fetcher, reused by hooks, prefetching and invalidation.
 export const q = {
+  me: () => queryOptions({queryKey: ['me'], queryFn: () => api<Profile>('/admin/me'), staleTime: 5 * 60_000}),
   stats: (days: number) => queryOptions({queryKey: ['stats', days], queryFn: () => api<Stats>('/admin/stats', {query: {days}})}),
   users: (f: UserFilters) =>
     queryOptions({
@@ -189,6 +192,27 @@ export function useUpdateUser() {
       ctx?.pages.forEach(([key, data]) => client.setQueryData(key, data));
       if (ctx?.detail) client.setQueryData(['user', id], ctx.detail);
     },
+    onSettled: (_d, _e, {id}) => {
+      void client.invalidateQueries({queryKey: ['users']});
+      void client.invalidateQueries({queryKey: ['user', id]});
+    },
+  });
+}
+
+/** The signed-in admin's own password, checked against the current one. */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: {currentPassword: string; newPassword: string}) =>
+      api<{ok: boolean}>('/admin/me/password', {method: 'PUT', body: JSON.stringify(body)}),
+  });
+}
+
+/** Sets (value) or generates (no value) a user's app PIN or an admin's dashboard password. */
+export function useSetUserPassword() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({id, ...body}: {id: string; value?: string; signOut?: boolean}) =>
+      api<PasswordResult>(`/admin/users/${id}/password`, {method: 'POST', body: JSON.stringify(body)}),
     onSettled: (_d, _e, {id}) => {
       void client.invalidateQueries({queryKey: ['users']});
       void client.invalidateQueries({queryKey: ['user', id]});

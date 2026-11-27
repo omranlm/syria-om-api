@@ -134,7 +134,7 @@ export function Segmented<V extends string | number>({
   );
 }
 
-export function CopyButton({text}: {text: string}) {
+export function CopyButton({text, label}: {text: string; label?: string}) {
   const {t} = usePrefs();
   const [done, setDone] = useState(false);
   return (
@@ -149,7 +149,7 @@ export function CopyButton({text}: {text: string}) {
       }}
     >
       <Icon name="copy" size={14} />
-      {done ? t('copied') : t('copyId')}
+      {done ? t('copied') : (label ?? t('copyId'))}
     </button>
   );
 }

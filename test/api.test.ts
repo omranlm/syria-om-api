@@ -204,4 +204,68 @@ describe('API (integration)', function () {
     await client.post('/auth/logout').send({refreshToken}).expect(200);
     await client.post('/auth/refresh').send({refreshToken}).expect(401);
   });
+
+  it('lets an admin set or generate a PIN or password for a user, and change their own password', async () => {
+    const seeded = await client
+      .post('/auth/admin/login')
+      .send({phone: config.adminPhone, password: config.adminPassword})
+      .expect(200);
+    const auth = `Bearer ${seeded.body.accessToken}`;
+    const me = await client.get('/admin/me').set('Authorization', auth).expect(200);
+    expect(me.body.role).to.equal('admin');
+    // The admin's own password changes only on the profile page, with the current one.
+    await client.post(`/admin/users/${me.body.id}/password`).set('Authorization', auth).send({}).expect(400);
+
+    // A user gets a 6-digit app PIN: a typed one must be 6 digits, a generated one is returned once.
+    await client.post(`/admin/users/${userId}/password`).set('Authorization', auth).send({value: '12ab'}).expect(400);
+    const pin = await client.post(`/admin/users/${userId}/password`).set('Authorization', auth).send({}).expect(200);
+    expect(pin.body.kind).to.equal('pin');
+    expect(pin.body.generated).to.match(/^\d{6}$/);
+    await client.post('/auth/pin/login').send({phone, pin: pin.body.generated, device: {id: deviceId}}).expect(200);
+    const typed = await client
+      .post(`/admin/users/${userId}/password`)
+      .set('Authorization', auth)
+      .send({value: '482913'})
+      .expect(200);
+    expect(typed.body.generated).to.be.null();
+
+    // An admin gets a dashboard password; signOut revokes their sessions.
+    await client.patch(`/admin/users/${userId}`).set('Authorization', auth).send({role: 'admin'}).expect(200);
+    await client.post(`/admin/users/${userId}/password`).set('Authorization', auth).send({value: 'short'}).expect(400);
+    const set = await client
+      .post(`/admin/users/${userId}/password`)
+      .set('Authorization', auth)
+      .send({signOut: true})
+      .expect(200);
+    expect(set.body.kind).to.equal('password');
+    expect(set.body.generated).to.match(/^[a-zA-Z2-9]{4}(-[a-zA-Z2-9]{4}){3}$/);
+    const first = await client.post('/auth/admin/login').send({phone, password: set.body.generated}).expect(200);
+
+    // That admin changes their own password: wrong current one is a 400 (the dashboard signs out on 401).
+    const own = `Bearer ${first.body.accessToken}`;
+    await client
+      .put('/admin/me/password')
+      .set('Authorization', own)
+      .send({currentPassword: 'wrong-password', newPassword: 'a-new-password'})
+      .expect(400);
+    await client
+      .put('/admin/me/password')
+      .set('Authorization', own)
+      .send({currentPassword: set.body.generated, newPassword: 'short'})
+      .expect(400);
+    await client
+      .put('/admin/me/password')
+      .set('Authorization', own)
+      .send({currentPassword: set.body.generated, newPassword: 'a-new-password'})
+      .expect(200);
+    await client.post('/auth/admin/login').send({phone, password: set.body.generated}).expect(401);
+    await client.post('/auth/admin/login').send({phone, password: 'a-new-password'}).expect(200);
+    // Their other sessions were signed out.
+    await client.post('/auth/refresh').send({refreshToken: first.body.refreshToken}).expect(401);
+    const events = await client
+      .get(`/admin/activity?userId=${me.body.id}&type=admin_password_set`)
+      .set('Authorization', auth)
+      .expect(200);
+    expect(JSON.stringify(events.body.items)).to.not.containEql(set.body.generated);
+  });
 });

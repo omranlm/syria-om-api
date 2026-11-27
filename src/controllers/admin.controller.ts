@@ -1,11 +1,21 @@
 import {authenticate} from '@loopback/authentication';
 import {inject, service} from '@loopback/core';
-import {get, HttpErrors, param, patch, requestBody} from '@loopback/rest';
+import {get, HttpErrors, param, patch, post, put, requestBody} from '@loopback/rest';
 import {SecurityBindings, securityId, UserProfile} from '@loopback/security';
 import {requireAdmin} from '../auth/jwt.strategy';
 import {DbService} from '../services/db.service';
 import {mapSession, SESSION_COLS, sessionGeoJson, sessionPoints, SessionRow} from '../services/session-queries';
-import {publicUser, UserRow, UserService} from '../services/user.service';
+import {TokenService} from '../services/token.service';
+import {
+  generatePassword,
+  generatePin,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  PIN_RE,
+  publicUser,
+  UserRow,
+  UserService,
+} from '../services/user.service';
 import {json} from './schemas';
 
 const clamp = (v: number | undefined, def: number, max: number) => Math.min(Math.max(v ?? def, 1), max);
@@ -54,8 +64,90 @@ export class AdminController {
     @inject(SecurityBindings.USER) private profile: UserProfile,
     @service(DbService) private db: DbService,
     @service(UserService) private users: UserService,
+    @service(TokenService) private tokens: TokenService,
   ) {
     requireAdmin(profile);
+  }
+
+  /** The signed-in admin, for the dashboard's profile page. */
+  @get('/admin/me')
+  async me() {
+    const user = await this.users.findById(this.profile[securityId]);
+    if (!user) throw new HttpErrors.Unauthorized('User no longer exists');
+    return publicUser(user);
+  }
+
+  /**
+   * Changes the signed-in admin's password after checking the current one, and signs out their other
+   * dashboard sessions (refresh tokens; this page keeps its access token until it expires).
+   * A wrong current password is a 400, not a 401: the dashboard signs out on 401/403.
+   */
+  @put('/admin/me/password')
+  async changeMyPassword(
+    @requestBody(
+      json({
+        type: 'object',
+        required: ['currentPassword', 'newPassword'],
+        properties: {
+          currentPassword: {type: 'string', maxLength: PASSWORD_MAX},
+          newPassword: {type: 'string', maxLength: PASSWORD_MAX},
+        },
+      }),
+    )
+    body: {currentPassword: string; newPassword: string},
+  ): Promise<{ok: boolean}> {
+    const id = this.profile[securityId];
+    if (body.newPassword.length < PASSWORD_MIN)
+      throw new HttpErrors.BadRequest(`The new password must have at least ${PASSWORD_MIN} characters`);
+    if (body.newPassword === body.currentPassword)
+      throw new HttpErrors.BadRequest('The new password must differ from the current one');
+    if (!(await this.users.changeAdminPassword(id, body.currentPassword, body.newPassword)))
+      throw new HttpErrors.BadRequest('The current password is wrong');
+    await this.tokens.revokeAllForUser(id);
+    await this.users.logEvent(id, null, 'admin_password_changed');
+    return {ok: true};
+  }
+
+  /**
+   * Sets another user's sign-in secret: the 6-digit app PIN of a user, the dashboard password of an admin.
+   * Without a value one is generated and returned (only then, and only in this response). The admin's own
+   * password changes on the profile page, where the current one is checked.
+   */
+  @post('/admin/users/{id}/password')
+  async setUserPassword(
+    @param.path.string('id') id: string,
+    @requestBody(
+      json({
+        type: 'object',
+        properties: {value: {type: 'string', maxLength: PASSWORD_MAX}, signOut: {type: 'boolean'}},
+      }),
+    )
+    body: {value?: string; signOut?: boolean},
+  ): Promise<{kind: 'pin' | 'password'; generated: string | null}> {
+    if (id === this.profile[securityId])
+      throw new HttpErrors.BadRequest('Change your own password on your profile page');
+    const user = await this.users.findById(id);
+    if (!user) throw new HttpErrors.NotFound('User not found');
+    if (user.anonymous || !user.phone_e164)
+      throw new HttpErrors.BadRequest('An anonymous account has no phone number to sign in with');
+    const kind = user.role === 'admin' ? 'password' : 'pin';
+    const value = body.value ?? (kind === 'pin' ? generatePin() : generatePassword());
+    if (kind === 'pin') {
+      if (!PIN_RE.test(value)) throw new HttpErrors.BadRequest('The PIN must be 6 digits');
+      await this.users.setPin(id, value);
+    } else {
+      if (value.length < PASSWORD_MIN)
+        throw new HttpErrors.BadRequest(`The password must have at least ${PASSWORD_MIN} characters`);
+      await this.users.setPassword(id, value);
+    }
+    if (body.signOut) await this.tokens.revokeAllForUser(id);
+    await this.users.logEvent(this.profile[securityId], null, 'admin_password_set', {
+      target: id,
+      kind,
+      generated: body.value === undefined,
+      signOut: !!body.signOut,
+    });
+    return {kind, generated: body.value === undefined ? value : null};
   }
 
   @get('/admin/stats')

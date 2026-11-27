@@ -1,6 +1,7 @@
 import {BindingScope, injectable, service} from '@loopback/core';
 import {HttpErrors} from '@loopback/rest';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import {config} from '../config';
 import {DbService} from './db.service';
 import {Role} from './token.service';
@@ -50,6 +51,24 @@ const PIN_LOCK_MINUTES = 15;
 const PIN_LONG_LOCK_FAILED = 10;
 const PIN_LONG_LOCK_MINUTES = 60;
 export const PIN_RE = /^\d{6}$/;
+/** Dashboard passwords: long enough to resist guessing, short enough to type. */
+export const PASSWORD_MIN = 8;
+export const PASSWORD_MAX = 128;
+
+// No 0/O, 1/l/I: generated passwords are read out or typed by hand.
+const PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** Random dashboard password in four groups, e.g. "k7Qm-x2Pd-Rt9h-W3nb" (about 90 bits). */
+export function generatePassword(): string {
+  const groups = Array.from({length: 4}, () =>
+    Array.from({length: 4}, () => PASSWORD_ALPHABET[crypto.randomInt(PASSWORD_ALPHABET.length)]).join(''),
+  );
+  return groups.join('-');
+}
+
+export function generatePin(): string {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+}
 
 @injectable({scope: BindingScope.SINGLETON})
 export class UserService {
@@ -260,6 +279,24 @@ export class UserService {
     if (!row?.password_hash || !(await bcrypt.compare(password, row.password_hash))) return undefined;
     const {password_hash: _ignored, ...user} = row;
     return user;
+  }
+
+  async setPassword(userId: string, password: string): Promise<void> {
+    await this.db.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [
+      userId,
+      await bcrypt.hash(password, 10),
+    ]);
+  }
+
+  /** Changes an admin's own dashboard password; false when the current one is wrong. */
+  async changeAdminPassword(userId: string, current: string, next: string): Promise<boolean> {
+    const row = await this.db.one<{password_hash: string | null}>(
+      `SELECT password_hash FROM users WHERE id = $1 AND role = 'admin'`,
+      [userId],
+    );
+    if (!row?.password_hash || !(await bcrypt.compare(current, row.password_hash))) return false;
+    await this.setPassword(userId, next);
+    return true;
   }
 
   /** Creates the default admin from ADMIN_PHONE/ADMIN_PASSWORD; an existing user keeps its password. */

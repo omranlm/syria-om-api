@@ -9,6 +9,7 @@ const loaders = {
   activity: () => import('../pages/Activity'),
   sync: () => import('../pages/Sync'),
   settings: () => import('../pages/Settings'),
+  profile: () => import('../pages/Profile'),
 };
 
 export type PageName = keyof typeof loaders;
@@ -21,6 +22,7 @@ export const Pages = {
   Activity: lazy(loaders.activity),
   Sync: lazy(loaders.sync),
   Settings: lazy(loaders.settings),
+  Profile: lazy(loaders.profile),
 };
 
 const started = new Set<PageName>();

@@ -69,6 +69,15 @@ export interface UserDetail extends User {
   devices: Device[];
 }
 
+/** The signed-in admin (GET /admin/me). */
+export type Profile = Omit<User, 'stats'>;
+
+/** POST /admin/users/{id}/password: the generated PIN or password, returned only when generated. */
+export interface PasswordResult {
+  kind: 'pin' | 'password';
+  generated: string | null;
+}
+
 export type SessionStatus = 'active' | 'paused' | 'stopped';
 
 export interface Session {

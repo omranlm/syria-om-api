@@ -35,6 +35,7 @@ const router = createHashRouter([
       {path: 'activity', element: <Pages.Activity />},
       {path: 'sync', element: <Pages.Sync />},
       {path: 'settings', element: <Pages.Settings />},
+      {path: 'profile', element: <Pages.Profile />},
       {path: '*', element: <NotFound />},
     ],
   },
