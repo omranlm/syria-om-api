@@ -14,7 +14,8 @@ HTTP redirects to HTTPS (Let's Encrypt, renewed by `certbot.timer`). `ufw` allow
 
 ## Layout on the server
 
-- `/opt/syria-om-api`: clone of this repository, owned by the system user `syriaom` (folders private except the
+- `/opt/syria-om-api`: clone of this repository (`https://github.com/osm-syria/syria-om-api.git`, branch `master`;
+  public, so `git pull` needs no credentials), owned by the system user `syriaom` (folders private except the
   path nginx needs to reach `maps-pipeline/out`). `.env` is mode 600.
 - PostgreSQL 16 + PostGIS from Ubuntu, database `syriaom` owned by the role `syriaom`, local connections only.
   Migrations run when the API starts.
@@ -57,7 +58,8 @@ Installs from Google Play use Play's own update prompt instead.
    `python3-certbot-nginx`, a system user `syriaom` with home `/opt/syria-om-api`.
 2. `CREATE ROLE syriaom LOGIN PASSWORD ...`, `createdb -O syriaom syriaom`, then as the superuser in that database
    `CREATE EXTENSION postgis; CREATE EXTENSION pgcrypto;`.
-3. Clone to `/opt/syria-om-api`, build as above, write `.env` from `.env.example` with
+3. `sudo -u syriaom git clone https://github.com/osm-syria/syria-om-api.git /opt/syria-om-api` (the home folder
+   must be empty), build as above, write `.env` from `.env.example` with
    `DATABASE_URL=postgres://syriaom:<password>@127.0.0.1:5432/syriaom`, `ALLOW_FAKE_OTP=false`, strong
    `JWT_SECRET` and `ADMIN_PASSWORD`, the Telegram bot token.
 4. `deploy/syria-om-api.service` to `/etc/systemd/system/`, `systemctl enable --now syria-om-api`.

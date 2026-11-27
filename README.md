@@ -3,6 +3,9 @@
 Backend for the Syria Organic Maps app: phone/OTP login, offline tracking sync, user activity log,
 admin dashboard and the static map server. LoopBack 4 + PostgreSQL/PostGIS, packaged with Docker Compose.
 
+Repository: https://github.com/osm-syria/syria-om-api (the app: https://github.com/osm-syria/organicmaps). The
+production server is described in [deploy/DEPLOY.md](deploy/DEPLOY.md).
+
 ## Run locally
 
 ```bash
