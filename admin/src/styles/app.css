@@ -1858,11 +1858,23 @@ select:focus {
   margin-top: 10px;
 }
 .settings.profile-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   grid-template-rows: auto;
 }
 .settings.profile-layout .setting:first-child {
   grid-row: auto;
+}
+/* Account and password side by side on wide screens; stacked below 1000 px like the settings page. */
+@media (min-width: 1001px) {
+  .settings.profile-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  }
+}
+.account > div {
+  min-width: 0;
+}
+.account h2,
+.account-phone {
+  overflow-wrap: anywhere;
 }
 .account {
   display: flex;
@@ -2080,6 +2092,8 @@ select:focus {
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    /* Top bar at its own height, the page below takes the rest (short pages no longer stretch the bar). */
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .sidebar {
     position: fixed;
