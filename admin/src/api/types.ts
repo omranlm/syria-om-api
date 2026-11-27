@@ -24,9 +24,17 @@ export interface DailyStat {
   users: number;
 }
 
+export interface ShareLinkStats {
+  views: number;
+  downloads: number;
+  app_opens: number;
+  installs: number;
+}
+
 export interface Stats {
   totals: Totals;
   daily: DailyStat[];
+  shareLinks: ShareLinkStats;
 }
 
 export type UserStatus = 'active' | 'blocked';

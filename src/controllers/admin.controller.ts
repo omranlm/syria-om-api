@@ -79,7 +79,18 @@ export class AdminController {
        GROUP BY day ORDER BY day`,
       [String(clamp(days, 30, 365))],
     );
-    return {totals, daily};
+    // The shared-link funnel over the same days: landing page visits and taps (website), installs (app).
+    const shareLinks = await this.db.one(
+      `SELECT COALESCE(sum(count) FILTER (WHERE kind = 'view'), 0)::int AS views,
+              COALESCE(sum(count) FILTER (WHERE kind IN ('download_google', 'download_huawei')), 0)::int AS downloads,
+              COALESCE(sum(count) FILTER (WHERE kind = 'open_app'), 0)::int AS app_opens,
+              (SELECT count(*)::int FROM activity_events
+                WHERE type = 'install_source' AND payload ->> 'source' = 'share_link'
+                  AND occurred_at >= (now() - ($1 || ' days')::interval)::date) AS installs
+       FROM share_link_hits WHERE day >= (now() - ($1 || ' days')::interval)::date`,
+      [String(clamp(days, 30, 365))],
+    );
+    return {totals, daily, shareLinks};
   }
 
   @get('/admin/users')

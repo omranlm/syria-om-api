@@ -20,6 +20,7 @@ export default function Overview() {
   const recent = useQuery(q.sessions(RECENT));
   const live = useQuery(q.live(15));
   const totals = stats.data?.totals;
+  const links = stats.data?.shareLinks;
 
   const dash = <span className="skeleton" style={{width: 64, height: 26}} />;
   const val = (v: React.ReactNode) => (totals ? v : dash);
@@ -64,6 +65,21 @@ export default function Overview() {
         <Kpi icon="route" label={t('kOpen')} value={val(fmt.num(totals?.open_sessions))} accent />
         <Kpi icon="live" label={t('kPoints')} value={val(fmt.num(totals?.points))} />
         <Kpi icon="leaf" label={t('kMapUpdates')} value={val(fmt.num(totals?.map_updates))} />
+      </section>
+
+      <section className="card">
+        <header className="card-head">
+          <h2>{t('shareLinks')}</h2>
+          <small>
+            {fmt.num(days)} {t('days')}
+          </small>
+        </header>
+        <div className="kpis">
+          <Kpi icon="link" label={t('slViews')} value={val(fmt.num(links?.views))} />
+          <Kpi icon="download" label={t('slDownloads')} value={val(fmt.num(links?.downloads))} />
+          <Kpi icon="phone" label={t('slAppOpens')} value={val(fmt.num(links?.app_opens))} />
+          <Kpi icon="users" label={t('slInstalls')} value={val(fmt.num(links?.installs))} hint={t('slInstallsHint')} accent />
+        </div>
       </section>
 
       <div className="grid-2">

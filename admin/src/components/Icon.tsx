@@ -20,6 +20,8 @@ const paths = {
   code: 'M9 8l-4 4 4 4m6-8 4 4-4 4',
   menu: 'M4 7h16M4 12h16M4 17h16',
   copy: 'M9 9h10v10H9zM5 15V5h10',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  download: 'M12 4v11m0 0-4-4m4 4 4-4M5 20h14',
   phone: 'M7 3h10v18H7zM11 18h2',
   battery: 'M4 8h14v8H4zm16 3v2',
   refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',

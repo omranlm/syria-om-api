@@ -142,6 +142,35 @@ describe('API (integration)', function () {
     refreshToken = res.body.refreshToken;
   });
 
+  it('counts shared-link page hits without sign-in and installs from a shared link', async () => {
+    const pool = new Pool({connectionString: config.databaseUrl});
+    const count = async (kind: string) =>
+      (await pool.query<{count: number}>('SELECT count FROM share_link_hits WHERE day = current_date AND kind = $1', [kind]))
+        .rows[0]?.count ?? 0;
+    try {
+      const before = await count('view');
+      await client.post('/share-links/hit').send({kind: 'view'}).expect(204);
+      await client.post('/share-links/hit').send({kind: 'view'}).expect(204);
+      await client.post('/share-links/hit').send({kind: 'download_google'}).expect(204);
+      expect(await count('view')).to.equal(before + 2);
+      // Only the known kinds, and nothing else in the body.
+      await client.post('/share-links/hit').send({kind: 'everything'}).expect(422);
+      await client.post('/share-links/hit').send({kind: 'view', lat: 33.5}).expect(422);
+    } finally {
+      await pool.end();
+    }
+    // The app reports a first open from a shared link soon after installing, without a session.
+    const occurredAt = new Date().toISOString();
+    await client
+      .post('/sync/batch')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        device: {id: deviceId},
+        events: [{id: crypto.randomUUID(), type: 'install_source', occurredAt, payload: {source: 'share_link', hoursSinceInstall: 0}}],
+      })
+      .expect(200);
+  });
+
   it('keeps admin endpoints away from normal users and open for the seeded admin', async () => {
     await client.get('/admin/stats').set('Authorization', `Bearer ${accessToken}`).expect(403);
     const login = await client
@@ -150,6 +179,9 @@ describe('API (integration)', function () {
       .expect(200);
     const stats = await client.get('/admin/stats').set('Authorization', `Bearer ${login.body.accessToken}`).expect(200);
     expect(stats.body.totals.sessions).to.be.greaterThanOrEqual(1);
+    expect(stats.body.shareLinks.views).to.be.greaterThanOrEqual(2);
+    expect(stats.body.shareLinks.downloads).to.be.greaterThanOrEqual(1);
+    expect(stats.body.shareLinks.installs).to.be.greaterThanOrEqual(1);
     const auth = `Bearer ${login.body.accessToken}`;
     const users = await client.get('/admin/users?q=' + phone.slice(-6)).set('Authorization', auth).expect(200);
     expect(users.body.items.some((u: {id: string}) => u.id === userId)).to.be.true();
